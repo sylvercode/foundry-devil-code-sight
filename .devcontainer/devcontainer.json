@@ -1,0 +1,47 @@
+{
+  "name": "foundry-trueseeing",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+
+  "features": {
+    // Chromium is needed for @vscode/test-electron headless test runs
+    "ghcr.io/devcontainers/features/chromium:1": {}
+  },
+
+  "forwardPorts": [
+    // CDP remote debugging port — FoundryVTT must be launched on the host
+    // with --remote-debugging-port=9222. Inside the container connect to
+    // host.docker.internal:9222 (Docker Desktop) or the host gateway IP.
+    9222
+  ],
+  "portsAttributes": {
+    "9222": {
+      "label": "CDP (FoundryVTT)",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "postCreateCommand": "npm install",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // Core dev experience
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+
+        // The two runtime dependencies of the extension itself
+        "ms-toolsai.jupyter",
+        "ms-edgedevtools.vscode-edge-devtools",
+
+        // Useful during extension development
+        "amodio.tsl-problem-matcher",
+        "connor4312.esbuild-problem-matchers"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    }
+  }
+}
