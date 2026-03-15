@@ -17,7 +17,13 @@ dist/
 _bmad-output/
 _bmad-backup/
 
+# BMAD installer-generated local module config
+_bmad/**/config.yaml
+
+# BMAD local memory files
+# Keep tracked only if you intentionally want shared repo-level memory/preferences
+# _bmad/_memory/
+
 # OS
 .DS_Store
 Thumbs.db
-_bmad/core/config.yaml
