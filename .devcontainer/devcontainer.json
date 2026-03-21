@@ -1,5 +1,5 @@
 {
-  "name": "foundry-devil-code-sight",
+  "name": "jupyter-browser-kernel",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
   "features": {},
   "forwardPorts": [
@@ -8,12 +8,6 @@
     // host.docker.internal:9222 (Docker Desktop) or the host gateway IP.
     9222
   ],
-  "portsAttributes": {
-    "9222": {
-      "label": "CDP (FoundryVTT)",
-      "onAutoForward": "silent"
-    }
-  },
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends chromium && npm install",
   "customizations": {
     "vscode": {

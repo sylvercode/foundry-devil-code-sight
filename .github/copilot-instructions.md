@@ -10,7 +10,7 @@ Do not assume that previously documented folders, files, panels, or flows alread
 
 ## Project Overview
 
-`foundry-devil-code-sight` is a VS Code extension for rapid FoundryVTT macro iteration against a live Foundry browser session.
+`jupyter-browser-kernel` is a VS Code extension for rapid FoundryVTT macro iteration against a live Foundry browser session.
 
 The current planned v1 direction is:
 
