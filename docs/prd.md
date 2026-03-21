@@ -37,7 +37,7 @@ documentCounts:
 workflowType: prd
 workflow: edit
 projectName: jupyter-browser-kernel
-lastEdited: 2026-03-20
+lastEdited: 2026-03-21
 editHistory:
   - date: 2026-03-18
     changes: Reframed the product as a browser execution platform with Foundry as the first MVP profile, split core platform and profile scope, and regrouped requirements.
@@ -65,6 +65,10 @@ editHistory:
     changes: Repositioned product naming to jupyter-browser-kernel and reframed Foundry as the first example web-app profile; retained Foundry-specific capabilities as profile-specific and mostly post-MVP.
   - date: 2026-03-20
     changes: Reframed MVP as profile-agnostic core kernel delivery, moved app-profile requirements and journeys to post-MVP framing, and removed repetitive negative companion phrasing in favor of neutral extension-owned architecture language.
+  - date: 2026-03-21
+    changes: Post-validation edits — replaced example-framing in FR23/FR29/FR30 with functional categories and architecture-scoped deferral, added measurement methods to NFR7 and NFR10, fixed RTM J1 scope numbering, and closed orphan FR traceability gap by mapping FR24–FR26 and FR37 to existing journeys as post-MVP expansions.
+  - date: 2026-03-21
+    changes: Aligned Integration Requirements output-helper bullet with FR23 functional-category style, clarified FR13 shared-runtime pattern (global namespace), and replaced opaque FR25 watcher terminology with plain-language equivalents.
 ---
 
 # Product Requirements Document - jupyter-browser-kernel
@@ -358,7 +362,7 @@ These journeys imply concrete capability needs:
 - Must integrate with VS Code notebook workflows.
 - Must connect to a live browser execution target through a user-controlled transport.
 - Must normalize execution results into a shared contract independent of the transport implementation.
-- Must provide extension-owned structured output helpers (`$f.out()`, `$f.log()`) during execution.
+- Must provide extension-owned structured output helpers (output capture, structured logging, value inspection) during execution; helper naming and calling conventions are architecture-scoped.
 - Must provide deterministic target-matching and target-eligibility diagnostics for the active profile.
 
 **App-Specific Profile Integration (Post-MVP, Foundry Example):**
@@ -438,7 +442,7 @@ This product is a VS Code-only developer tool. Its core job is deterministic Jav
 
 ## Functional Requirements
 
-Traceability highlights: FR1 through FR23 cover the platform execution contract used by MVP journeys; FR24 through FR26 and FR37 are post-MVP core-platform extensions; FR27 through FR36 cover post-MVP app-specific profile requirements (Foundry).
+Traceability highlights: FR1 through FR23 cover the platform execution contract used by MVP journeys; FR24 through FR26 (observation extensions) and FR37 (parameterized execution) are post-MVP core-platform enhancements mapped to existing journeys as post-MVP expansions; FR27 through FR36 cover post-MVP app-specific profile requirements (Foundry).
 
 ### Core Platform Requirements
 
@@ -459,7 +463,7 @@ Traceability highlights: FR1 through FR23 cover the platform execution contract 
 - FR10: The extension can return successful execution values to notebook output.
 - FR11: The extension can surface syntax and runtime errors as notebook output with message, stack, and source location when available.
 - FR12: A user can rerun modified cells repeatedly in the same notebook workflow.
-- FR13: The extension can support execution isolation per cell while allowing explicit shared-runtime patterns when the user chooses them.
+- FR13: The extension can support execution isolation per cell while allowing explicit shared-runtime patterns such as a shared global namespace when the user chooses them.
 
 #### Result Normalization and Output Contract
 
@@ -478,12 +482,12 @@ Traceability highlights: FR1 through FR23 cover the platform execution contract 
 - FR20: A user can execute reversal cells to restore state after experiments.
 - FR21: A user can iterate through at least two successive snippet versions in a single notebook session.
 - FR22: A user can install and use the extension through a manual VS Code workflow without requiring Marketplace distribution.
-- FR23: The extension can expose intentional script output through extension-owned runtime helpers such as `$f.out()` and `$f.log()`.
+- FR23: The extension can expose intentional script output through extension-owned runtime helpers providing: (a) intentional output capture, (b) structured logging, and (c) value inspection. Helper naming and calling conventions are architecture-scoped.
 
 #### Observation Extensions [Post-MVP Core]
 
 - FR24 [Post-MVP]: A user can define watched expressions and refresh them manually or after execution events.
-- FR25 [Post-MVP]: A user can configure shallow projections and reference drill-down for watched values.
+- FR25 [Post-MVP]: A user can configure depth-limited property projections and expand nested references for watched values.
 - FR26 [Post-MVP]: A user can continue refreshing other watched values when one watcher evaluation fails.
 
 ### Example Web-App Profile Requirements (Post-MVP, Foundry VTT)
@@ -492,8 +496,8 @@ Traceability highlights: FR1 through FR23 cover the platform execution contract 
 
 - FR27: The Foundry profile can identify valid execution targets using profile-owned matching rules.
 - FR28: The Foundry profile execution path can rely on extension-owned runtime envelope and helper injection.
-- FR29: The extension can inject a minimal execution envelope that carries structured value and log output for each cell run.
-- FR30: The Foundry profile can classify target eligibility (for example, `eligible`, `target_mismatch`, `disconnected`).
+- FR29: The extension can inject a zero-boilerplate execution envelope that carries structured value and log output for each cell run.
+- FR30: The Foundry profile can classify target eligibility into states providing: (a) ready for execution, (b) target mismatch, and (c) connection-interrupted conditions. The full set of eligibility states and their labels are architecture-scoped.
 - FR31: The Foundry profile can present actionable reconnect or target-selection guidance when target eligibility is not satisfied.
 - FR32: A user can proceed with Foundry execution whenever the current target is classified as `eligible`.
 
@@ -527,13 +531,13 @@ Traceability highlights: FR1 through FR23 cover the platform execution contract 
 
 ### Core Platform Integration and Contracts
 
-- NFR7: The platform core must remain adapter-agnostic; it does not hardcode app-specific target matching rules.
+- NFR7: The platform core must remain adapter-agnostic; it does not hardcode app-specific target matching rules, measured by static analysis and code review confirming zero profile-specific imports or literals in core modules.
 - NFR8: The extension must coexist with Edge DevTools without forced disconnect behavior, measured by sustained active session state and successful notebook execution after DevTools attaches to the same target.
 - NFR9: Each profile must implement deterministic target-eligibility diagnostics with explicit states and guidance, measured by integration tests that verify state classification and deterministic diagnostic outcomes.
 
 ### Example Web-App Profile Integration and Contracts (Post-MVP, Foundry VTT)
 
-- NFR10 [Post-MVP]: The Foundry profile attaches only to targets classified as `eligible` by profile-owned matching rules.
+- NFR10 [Post-MVP]: The Foundry profile attaches only to targets classified as `eligible` by profile-owned matching rules, measured by integration tests that verify attachment is attempted only after an `eligible` classification and is rejected for all other states.
 - NFR11 [Post-MVP]: The Foundry target-eligibility check must complete within a configurable timeout and return one of `eligible`, `target_mismatch`, or `disconnected`, with default timeout 5 seconds and configurable bounds of 1 to 30 seconds, measured from check start to state result.
 
 ### Core Platform Testing and Validation
@@ -557,13 +561,13 @@ Traceability highlights: FR1 through FR23 cover the platform execution contract 
 
 This table maps each user journey to the scope items, functional requirements, and non-functional requirements it exercises. Use this as the primary cross-reference for epic and story decomposition.
 
-| Journey                               | Scope Items              | FRs                 | NFRs                         |
-| ------------------------------------- | ------------------------ | ------------------- | ---------------------------- |
-| J1: Rapid Snippet Iteration           | Core 1–12                | FR1–FR18, FR22–FR23 | NFR1, NFR3, NFR5–9, NFR12–13 |
-| J2: Safe Experimentation and Reversal | Core 3–4, 10             | FR8–FR17, FR19–FR21 | NFR1, NFR3, NFR5–6           |
-| J3: Connection and Target Recovery    | Core 1–2, 4–5            | FR1–FR7             | NFR2, NFR4, NFR8–9           |
-| J4: Diagnosing Unexpected Behavior    | Core 2, 4, 7             | FR14–FR18           | NFR5–6, NFR8, NFR15–17       |
-| J5: Adding an App Profile (Post-MVP)  | Profile scope (post-MVP) | FR27–FR36           | NFR10–11, NFR14              |
+| Journey                               | Scope Items              | FRs                                            | NFRs                         |
+| ------------------------------------- | ------------------------ | ---------------------------------------------- | ---------------------------- |
+| J1: Rapid Snippet Iteration           | Core 1–11                | FR1–FR18, FR22–FR23; post-MVP: FR24–FR26, FR37 | NFR1, NFR3, NFR5–9, NFR12–13 |
+| J2: Safe Experimentation and Reversal | Core 3–4, 10             | FR8–FR17, FR19–FR21; post-MVP: FR37            | NFR1, NFR3, NFR5–6           |
+| J3: Connection and Target Recovery    | Core 1–2, 4–5            | FR1–FR7                                        | NFR2, NFR4, NFR8–9           |
+| J4: Diagnosing Unexpected Behavior    | Core 2, 4, 7             | FR14–FR18; post-MVP: FR24–FR26                 | NFR3, NFR5–6, NFR8, NFR15–17 |
+| J5: Adding an App Profile (Post-MVP)  | Profile scope (post-MVP) | FR27–FR36                                      | NFR10–11, NFR14              |
 
 ## Glossary
 
