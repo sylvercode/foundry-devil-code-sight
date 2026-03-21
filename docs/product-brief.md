@@ -1,168 +1,116 @@
 ---
-title: Product Brief — foundry-devil-code-sight
-version: 0.1
-date: 2026-03-15
-status: Draft
+title: Product Brief — jupyter-browser-kernel
+version: 0.2
+date: 2026-03-21
+status: Complete
 owners:
   - Sylvercode
 sources:
+  - docs/prd.md
   - docs/brainstorming-session-2026-03-14-162248.md
   - spike/cdp-multiplex-findings.md
 ---
 
-> Superseded for execution planning: Use `docs/prd.md` as the canonical source of truth.
+# Product Brief: jupyter-browser-kernel
 
-# Product Brief: foundry-devil-code-sight
+## Executive Summary
 
-## 1) Executive Summary
+jupyter-browser-kernel is a VS Code extension that provides a browser-backed JavaScript notebook execution kernel for fast iteration against live web applications. The MVP is intentionally profile-agnostic: it focuses on a deterministic write-run-inspect loop that works without requiring any app-specific profile.
 
-foundry-devil-code-sight is a VS Code extension that connects to a running FoundryVTT browser tab via CDP to provide a JavaScript notebook scratchpad, variable watching, and intentional script output viewing. The product complements (not replaces) Edge DevTools by enabling fast iterate-and-run workflows directly from VS Code while remaining debuggable in DevTools.
+The product solves a common developer-tooling gap. Browser-hosted automation and runtime scripting are often fragmented across page consoles, ad hoc scripts, and manual copy-paste loops. This slows iteration, hides execution history, and increases the cost of experimentation.
 
-The key architectural decision for v1 is to use browser-level CDP WebSocket multiplexing with session-based target attachment. This avoids single-client page WebSocket conflicts and enables coexistence with DevTools.
+The core value is a stable, repeatable notebook workflow: run JavaScript cells against an active browser target, receive normalized success or failure output inline, and rerun quickly without rebuilding context. The architecture is designed for coexistence with browser debugging tools, including Edge DevTools, and for future profile expansion after core-kernel stability.
 
-## 2) Problem Statement
+## The Problem
 
-FoundryVTT scripting workflows are slow and fragmented:
+Developers iterating browser runtime logic face three recurring pain points:
 
-- Ad hoc scripts are hard to iterate quickly from an editor.
-- Context/state inspection is manual and error-prone.
-- Console output is noisy and mixed with unrelated browser logs.
-- Debugging and custom tooling can conflict when both need CDP access.
+1. Iteration friction: there is no durable notebook-first loop for rapid reruns against a live page.
+2. Inconsistent outcomes: syntax, runtime, and transport-level failures are surfaced differently across tools.
+3. Tooling conflicts: custom execution flows can interfere with active browser debugging sessions.
 
-Users need a fast, repeatable, low-friction workflow for executing and refining scripts against a live Foundry world.
+The status quo increases cycle time, makes risky experimentation harder to reverse, and discourages structured iterative workflows.
 
-## 3) Product Goals
+## The Solution
 
-1. Enable reliable JavaScript cell execution from .ipynb in the Foundry browser context.
-2. Provide lightweight variable watching that is useful despite CDP serialization limits.
-3. Surface deliberate script output in VS Code with minimal noise.
-4. Preserve compatibility with Edge DevTools during active development.
-5. Keep v1 scope narrow and robust, with clear upgrade/version behavior.
+Build a profile-agnostic core kernel that delivers:
 
-## 4) Non-Goals (v1)
+1. JavaScript cell execution from VS Code notebooks against a live browser target.
+2. Shared result normalization for both successful execution and failures.
+3. Intentional output capture that stays distinct from unrelated browser console noise.
+4. Manual reconnect and explicit connection-state reporting for operational recovery.
+5. Deterministic target-matching and target-eligibility diagnostics owned by the active profile boundary.
 
-1. Full replacement for browser DevTools debugger.
-2. Deep object inspector parity with DevTools variable trees.
-3. Rich action marketplace or cloud sync.
-4. Full browser console mirroring.
-5. Broad Foundry helper API surface in companion module.
+MVP scope is the core kernel only. App-specific profiles are layered post-MVP.
 
-## 5) Primary Users
+## What Makes This Different
 
-1. Foundry world/module developers writing and iterating scripts.
-2. Power users/GMs automating repetitive world operations.
-3. Teams sharing repeatable workspace-scoped actions.
+1. Deterministic execution loop over ad hoc console scripting.
+2. Coexistence-first architecture with browser debugging tools, rather than competitive attachment behavior.
+3. Contract-first normalization: execution semantics remain stable even if transport choices evolve.
+4. Explicit profile boundaries that allow app-specific behavior without rewriting platform core logic.
 
-## 6) User Value Proposition
+## Who This Serves
 
-- Run, debug, and iterate Foundry scripts from VS Code notebooks.
-- Inspect important runtime values quickly via focused watchers.
-- Capture intentional output in a clean VS Code channel.
-- Reuse known-good scripts as named, parameterized actions.
+Primary users:
 
-## 7) Scope for v1
+1. Power users and developers who iterate JavaScript logic against live browser applications.
+2. Solo builders who need a repeatable notebook workflow with fast reruns and explicit failure diagnostics.
 
-### In Scope
+Post-MVP example profile audience:
 
-1. CDP browser-level connection and per-target session attachment (`Target.attachToTarget`, `flatten: true`).
-2. Notebook controller for JavaScript cells in `.ipynb`.
-3. IIFE-wrapped execution contract with normalized error handling.
-4. Variable watcher with shallow values and watch chaining.
-5. Companion Foundry module (thin): namespace init, version, `$f.out()`, `$f.log()`.
-6. Three-state module handshake on connect: missing / legacy / mismatch / ok.
-7. Configurable connect retry behavior.
-8. Intentional output stream using sentinel-prefixed `$f.log()` into VS Code OutputChannel.
-9. Workspace-scoped actions file with cell-to-action promotion and action-to-cell roundtrip.
-10. `$prompt()` pre-execution substitution for parameterized cells/actions.
+1. Foundry VTT builders who want notebook-first macro iteration.
 
-### Out of Scope
+Foundry is the first example profile after MVP, not the platform definition.
 
-1. Automatic deep object expansion in watcher.
-2. Full log panel webview with advanced filtering UI.
-3. Complex Foundry utility SDK in companion module.
-4. Multi-target orchestration beyond active Foundry page selection.
+## Success Criteria
 
-## 8) Functional Requirements
+1. A user can connect, execute a JavaScript notebook cell, and see structured inline output in VS Code.
+2. Execution failures consistently surface with actionable details (message, stack, and source location when available).
+3. Edge DevTools coexistence is maintained during active kernel use.
+4. Manual reconnect restores usable execution when the target is available.
+5. Core-kernel behavior is validated by deterministic fixture-based tests covering success, syntax error, runtime error, and serialization-boundary cases.
 
-1. Extension connects using `foundryDevilCodeSight.cdpHost` and `foundryDevilCodeSight.cdpPort`.
-2. Target selection must only attach to `type === 'page'` URLs containing `/game`.
-3. Notebook execution must support async code, return values, and surfaced errors.
-4. Errors must normalize to a shared shape for notebook, watcher, and actions flows.
-5. Watcher refresh triggers: manual, post-cell execution, optional timer (`0` disables).
-6. Companion module state/version must be validated at connect-time handshake.
-7. Missing module path must offer install guidance from extension UI.
-8. Output channel should include only deliberate script output (sentinel-prefixed events).
-9. Actions persist in workspace root `.foundry-actions.json`.
-10. `$prompt()` values must be collected in VS Code before evaluation.
+## Scope
 
-## 9) Technical Approach (v1)
+### MVP In Scope (Core Kernel)
 
-1. Keep `chrome-remote-interface` and switch to browser-level WebSocket from `/json/version`.
-2. Attach independent flat sessions to Foundry target via `Target.attachToTarget`.
-3. Route commands via `client.send(method, params, sessionId)` and subscribe with session-scoped event keys.
-4. Use IIFE wrapper for cell/action isolation and explicit global namespace (`window.$foundryNotebook` / `$f`).
-5. Emit runtime errors as an envelope and merge with CDP `exceptionDetails` into unified `EvalResult`.
-6. Use `OutputChannel` instead of a webview log panel for v1 simplicity.
+1. Browser-session connection lifecycle management.
+2. JavaScript notebook execution for .ipynb cells, including async support.
+3. Shared result contract with transport-boundary isolation.
+4. Intentional output capture and execution-history retention.
+5. Manual reconnect and explicit connection-state reporting.
+6. Browser debugger coexistence as a non-negotiable platform behavior.
+7. Extension-owned runtime envelope and structured output helper protocol.
+8. Deterministic target-matching and target-eligibility diagnostics for the active profile boundary.
 
-## 10) Success Metrics
+### Post-MVP Scope
 
-1. Connectivity: successful attach rate to Foundry target in normal setup.
-2. Coexistence: extension remains connected while Edge DevTools is active.
-3. Execution reliability: cell success/failure reporting accuracy and consistency.
-4. Iteration speed: user-reported reduction in script iteration time.
-5. Adoption: number of saved actions and repeated action executions per workspace.
-6. Stability: low reconnect/churn rates under page reload and startup races.
+1. Foundry profile examples, including token-state read and token update notebook flows.
+2. Rich complex-object inspection and deeper app-aware diagnostics.
+3. Optional companion-module enhancements for app-specific deep runtime integration.
+4. Observation and parameterization extensions, including watcher-depth improvements and prompt-based cell inputs.
+5. Workspace action promotion and action reuse workflows.
 
-## 11) Risks and Mitigations
+### Explicit MVP Non-Goals
 
-1. CDP multiplexing regressions across Chromium variants.
-   - Mitigation: keep browser-level/session architecture isolated and covered by integration tests.
-2. Module install/version mismatch confusion.
-   - Mitigation: explicit handshake states and guided install/update messaging.
-3. Serialization limits frustrate watcher expectations.
-   - Mitigation: shallow-watch model documented clearly, with UUID chaining workflow.
-4. Output signal pollution.
-   - Mitigation: strict sentinel filtering for `$f.log()` only.
-5. Macro substitution safety concerns (`$prompt()`).
-   - Mitigation: clear quoting rules and explicit preview/confirmation before run.
+1. Treating Foundry as a platform-level assumption.
+2. Requiring a companion module for core kernel operation.
+3. Full DevTools replacement or deep object-inspector parity.
+4. Automatic reconnect behavior.
+5. Marketplace hardening and broad onboarding polish.
 
-## 12) Dependencies
+## Vision
 
-1. VS Code APIs: notebook controller, output channel, webview (install guidance), debug API.
-2. Extension dependencies:
-   - `ms-toolsai.jupyter`
-   - `ms-edgedevtools.vscode-edge-devtools`
-3. CDP client:
-   - `chrome-remote-interface` (session multiplexing supported).
-4. Companion Foundry module distributed via GitHub release manifest URL.
+If successful, jupyter-browser-kernel becomes a reusable browser-execution platform with a stable core and thin app-specific profiles. Foundry serves as the first practical profile example, proving profile layering without coupling the platform to a single domain.
 
-## 13) Milestones
+Long term, the product can expand profile coverage while preserving the same kernel contract, notebook experience, and coexistence guarantees.
 
-1. M1: CDP session architecture integrated and smoke-tested.
-2. M2: Companion module v1 + handshake/retry behavior.
-3. M3: Notebook IIFE execution + unified error contract.
-4. M4: Watcher shallow-chain UX + post-cell refresh.
-5. M5: OutputChannel sentinel logging.
-6. M6: Actions persistence + `$prompt()` macros + cell/action roundtrip.
+## Key Risks and Mitigations
 
-## 14) Open Questions
-
-1. Required minimum Chromium/Edge versions for guaranteed flat-session behavior in user environments.
-2. Whether action parameter metadata should evolve beyond inline `$prompt()` patterns.
-3. What default retry timeout is least surprising across local and devcontainer setups.
-4. Whether install guidance should include module auto-version check against remote release metadata.
-
-## 15) Release Readiness Criteria
-
-1. Edge DevTools coexistence verified with concurrent active sessions.
-2. Notebook execution, watcher refresh, and output channel pass happy-path and error-path tests.
-3. Companion module handshake covers all four states with user-visible guidance.
-4. Reload/reconnect behavior stable under Foundry startup timing variability.
-5. Extension and module versions documented with compatibility notes.
-
-## 16) Immediate Next Planning Actions
-
-1. Convert this brief into a phase-by-phase implementation plan with estimates.
-2. Define integration test cases for CDP session scoping and reconnect behavior.
-3. Draft companion module repository structure and release contract.
-4. Write the execution contract spec (`EvalResult`, error envelope, MIME mapping).
+1. Session-routing and coexistence regressions across Chromium variants.
+   - Mitigation: isolate orchestration logic and enforce fixture-based regression coverage.
+2. Transport decisions locking the product too early.
+   - Mitigation: preserve explicit transport boundaries and keep kernel contracts transport-agnostic.
+3. Scope drift back into app-specific MVP commitments.
+   - Mitigation: maintain strict separation of core platform vs profile-owned behavior in planning and implementation artifacts.
