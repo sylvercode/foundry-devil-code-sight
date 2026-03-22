@@ -3,6 +3,9 @@ node_modules/
 
 # esbuild output
 dist/
+.tmp/
+.artifacts/
+bmad-sync-summary.json
 
 # TypeScript incremental compilation cache
 *.tsbuildinfo

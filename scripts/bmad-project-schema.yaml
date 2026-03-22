@@ -1,0 +1,175 @@
+# BMAD GitHub Project — Field Schema
+#
+# Apply this schema when creating a GitHub Projects (v2) project for BMAD sync.
+# Use the GitHub Projects GraphQL API or the GitHub UI to create each field.
+# The "Status" field drives column placement in the Board layout.
+#
+# Recommended project name: BMAD Backlog
+# Recommended default view: Board grouped by Status
+
+project:
+  name: "BMAD Backlog"
+  description: "Canonical backlog derived from BMAD planning artifacts. BMAD is the single source of truth."
+  default_view: board
+  board_columns:
+    # Column order reflects natural workflow progression.
+    # The Status single-select field drives which column an item appears in.
+    - name: "Backlog"
+      status_value: "Backlog"
+    - name: "Ready"
+      status_value: "Ready"
+    - name: "In Progress"
+      status_value: "In Progress"
+    - name: "In Review"
+      status_value: "In Review"
+    - name: "Done"
+      status_value: "Done"
+
+fields:
+  # ─── Status ───────────────────────────────────────────────────────────────
+  - name: "Status"
+    type: single_select
+    purpose: >
+      Drives board column placement. Mirrors the BMAD `status` frontmatter field.
+      The BMAD local sync runner sets this field; humans may promote items within
+      their working session, but BMAD remains the authoritative state on next sync.
+    mapping_source: "frontmatter: status"
+    allowed_values:
+      - name: "Backlog"
+        description: "Identified but not yet ready for active work."
+        color: "#c5def5"
+      - name: "Ready"
+        description: "Fully specified and ready to be picked up."
+        color: "#bfd4f2"
+      - name: "In Progress"
+        description: "Actively being worked on."
+        color: "#fbca04"
+      - name: "In Review"
+        description: "Implementation complete; under review."
+        color: "#e99695"
+      - name: "Done"
+        description: "Accepted and complete."
+        color: "#0e8a16"
+      - name: "Closed"
+        description: "Closed because the BMAD source was deleted or superseded."
+        color: "#d93f0b"
+
+  # ─── Priority ─────────────────────────────────────────────────────────────
+  - name: "Priority"
+    type: single_select
+    purpose: >
+      Indicates relative importance of this item. Mirrors the BMAD `priority`
+      frontmatter field. Enables filtered views and prioritized board sweeps.
+    mapping_source: "frontmatter: priority"
+    allowed_values:
+      - name: "High"
+        description: "Must do; blocks value delivery."
+        color: "#d93f0b"
+      - name: "Medium"
+        description: "Should do this sprint or next."
+        color: "#fbca04"
+      - name: "Low"
+        description: "Nice to have; can be deferred."
+        color: "#0e8a16"
+
+  # ─── Effort ───────────────────────────────────────────────────────────────
+  - name: "Effort"
+    type: single_select
+    purpose: >
+      T-shirt size estimate for the item. Mirrors the BMAD `effort` frontmatter field.
+      Used for sprint capacity planning and backlog refinement views.
+    mapping_source: "frontmatter: effort"
+    allowed_values:
+      - name: "XS"
+        description: "Less than half a day."
+        color: "#bfd4f2"
+      - name: "S"
+        description: "Roughly one day."
+        color: "#c5def5"
+      - name: "M"
+        description: "Two to three days."
+        color: "#fbca04"
+      - name: "L"
+        description: "One week."
+        color: "#e99695"
+      - name: "XL"
+        description: "More than one week; consider splitting."
+        color: "#d93f0b"
+
+  # ─── BMAD ID ──────────────────────────────────────────────────────────────
+  - name: "BMAD ID"
+    type: text
+    purpose: >
+      Stores the canonical BMAD identifier (e.g., `epic-1`, `story-1.1`).
+      Enables filtering and grouping by BMAD hierarchy within the project.
+      This is the same ID that appears in the `bmad:<id>` issue label.
+    mapping_source: "frontmatter: id"
+
+  # ─── BMAD Type ────────────────────────────────────────────────────────────
+  - name: "BMAD Type"
+    type: single_select
+    purpose: >
+      Distinguishes Epics from Stories so board views can be filtered to show
+      only one level of the hierarchy at a time.
+    mapping_source: "derived: type (epic | story)"
+    allowed_values:
+      - name: "Epic"
+        description: "A BMAD Epic issue."
+        color: "#6f42c1"
+      - name: "Story"
+        description: "A BMAD Story issue."
+        color: "#0075ca"
+
+  # ─── BMAD File ────────────────────────────────────────────────────────────
+  - name: "BMAD File"
+    type: text
+    purpose: >
+      Repository-relative path to the BMAD source file for this item
+      (e.g., `_bmad-output/planning-artifacts/epic-1.md`). Provides a
+      direct traceability link from Project item back to canonical source.
+    mapping_source: "derived: file path at parse time"
+
+  # ─── BMAD SHA ─────────────────────────────────────────────────────────────
+  - name: "BMAD SHA"
+    type: text
+    purpose: >
+      Git commit SHA of the BMAD source file at the time of the most recent
+      sync. Allows auditors to verify exactly what version of BMAD content is
+      reflected in the Project and Issue body.
+    mapping_source: "derived: git log -1 --format=%H -- <bmad_file>"
+
+  # ─── Parent Epic ──────────────────────────────────────────────────────────
+  - name: "Parent Epic"
+    type: text
+    purpose: >
+      Issue number of the parent Epic for Story items (e.g., `#12`).
+      Enables filtering stories by epic and building parent-child hierarchy
+      views. Set to the GitHub Issue number, not the BMAD ID string.
+    mapping_source: "frontmatter: epic_id → resolved to GitHub issue number"
+
+  # ─── Milestone ────────────────────────────────────────────────────────────
+  - name: "Milestone"
+    type: text
+    purpose: >
+      Name of the GitHub milestone this item belongs to. Mirrors the BMAD
+      `milestone` frontmatter field. Redundant with the Issue milestone but
+      useful for Project-level milestone grouping views.
+    mapping_source: "frontmatter: milestone"
+
+  # ─── Sprint ───────────────────────────────────────────────────────────────
+  - name: "Sprint"
+    type: iteration
+    purpose: >
+      GitHub Projects iteration field for sprint tracking. Not synced from BMAD
+      (BMAD does not model sprints). Set manually by the team during sprint planning.
+      BMAD sync will not overwrite this field.
+    mapping_source: "manual — not derived from BMAD"
+
+  # ─── Last Synced ──────────────────────────────────────────────────────────
+  - name: "Last Synced"
+    type: date
+    purpose: >
+      Date of the most recent BMAD sync for this item. Set by the BMAD local sync
+      runner on each successful create or update. Enables identifying stale items
+      that have not been synced recently.
+    mapping_source: "derived: timestamp at sync time"
