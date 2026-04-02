@@ -94,6 +94,8 @@ So that I can recover from reloads or drops without restarting VS Code.
 **Then** the root-cause category is explicit
 **And** the next recovery step is clear.
 
+**Traceability Note:** Validates NFR2 (reconnect response timing) and NFR4 (reconnect restores execution capability).
+
 ## Story 1.5: Preserve DevTools Coexistence
 
 As a developer,
@@ -116,6 +118,8 @@ So that I can debug and iterate notebooks at the same time.
 **When** integration tests run
 **Then** deterministic tests fail
 **And** the regression is attributable to coexistence checks.
+
+**Traceability Note:** Validates NFR8 (DevTools coexistence without forced disconnect).
 
 ## Story 1.6: Surface Connection State and Recovery Actions
 
@@ -144,6 +148,11 @@ So that I always know readiness and the next action.
 **When** I execute connection controls
 **Then** primary actions are reachable without pointer interaction
 **And** command outcomes are announced in notebook or status feedback.
+
+**Given** critical state or error messages are rendered
+**When** I review status or diagnostics
+**Then** each message includes explicit text labels
+**And** color is supplemental and never the sole indicator.
 
 ## Story 1.7: Automate VSIX Release via CI
 

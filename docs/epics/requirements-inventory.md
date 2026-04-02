@@ -122,7 +122,7 @@ FR12: Epic 2 - rerun loop support
 FR13: Epic 2 - execution isolation with explicit shared-runtime option
 FR14: Epic 2 - shared normalized result contract
 FR15: Epic 2 - inline run result inspection
-FR16: Epic 3 - intentional log capture distinct from ambient noise
+FR16: Epic 3 - intentional log capture and discrimination from ambient noise across notebook and output-channel contexts
 FR17: Epic 4 - session-scoped value-history continuity
 FR18: Epic 6 - deterministic fixture-based core validation
 FR19: Epic 6 - forward-operation experimentation pattern
@@ -144,3 +144,8 @@ FR34: Epic 8 - Foundry starter notebook flow
 FR35: Epic 8 - save reusable action
 FR36: Epic 8 - reopen and execute saved action with prompts
 FR37: Epic 9 - pre-execution parameter substitution via $prompt()
+
+### UX-DR to FR Mapping Notes
+
+- UX-DR13 (mirror inline feedback into chronological output logs): Covered by FR16 and FR23, delivered through Epic 3 output routing and helper-driven intentional output capture.
+- UX-DR19 (no color-only communication): Covered by FR4 state-label requirements and Epic 1 Story 1.6 explicit acceptance criteria requiring text-first messaging.

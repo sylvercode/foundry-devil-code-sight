@@ -29,6 +29,8 @@ So that I can inspect run outcomes immediately without opening external tooling.
 **Then** the result provides a clear representation or fallback description
 **And** the run is not marked as failed solely due to display limitations.
 
+**Scope Note (FR10 boundary):** Story 4.1 builds on Story 2.1 baseline return-value visibility by adding intentional value rendering semantics and structured output behavior for value-capture workflows.
+
 ## Story 4.2: Display Structured Value Output with Type Context
 
 As a developer,

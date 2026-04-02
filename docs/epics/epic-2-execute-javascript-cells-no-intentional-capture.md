@@ -1,6 +1,6 @@
 # Epic 2: Execute JavaScript Cells (No Intentional Capture)
 
-**Goal:** Enable reliable JavaScript cell execution against a live Foundry browser target, with normalized result contracts and fast iteration patterns.
+**Goal:** Enable reliable JavaScript cell execution against a live browser execution target, with normalized result contracts and fast iteration patterns.
 
 **Stories:**
 
@@ -12,7 +12,7 @@ So that I can validate browser state and behavior directly from notebook cells.
 
 **Acceptance Criteria:**
 
-**Given** an active session with a valid Foundry target
+**Given** an active session with a valid browser execution target
 **When** I run a synchronous JavaScript cell
 **Then** the code executes in the browser context
 **And** the primitive or serializable return value is shown inline.
@@ -26,6 +26,8 @@ So that I can validate browser state and behavior directly from notebook cells.
 **When** I attempt to run a cell
 **Then** execution is blocked
 **And** a clear reconnect prompt is shown in the cell output.
+
+**Scope Note (FR10 boundary):** Story 2.1 establishes baseline inline return-value visibility for successful synchronous execution. Story 4.1 extends this with structured rendering and explicit value-presentation semantics.
 
 ## Story 2.2: Run Asynchronous JavaScript Cells
 
@@ -77,6 +79,8 @@ So that success and failure are interpretable regardless of transport internals.
 **When** results are produced
 **Then** classification parity holds — the same contract shapes are used
 **And** downstream rendering code does not branch on transport type.
+
+**Traceability Note:** Validates NFR5 (no silent failure) and NFR6 (classification parity across execution paths).
 
 ## Story 2.4: Support Fast Rerun and Iteration Patterns
 

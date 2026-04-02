@@ -29,6 +29,8 @@ So that core runtime behavior remains stable and profile-agnostic.
 **Then** no profile-specific runtime imports are required
 **And** tests remain runnable in isolation from profile implementations.
 
+**Traceability Note:** Validates NFR12 (deterministic automated validation) and NFR13 (coverage of reconnect and serialization boundaries).
+
 ## Story 6.2: Support Forward and Rollback Cell Patterns
 
 As a user,
