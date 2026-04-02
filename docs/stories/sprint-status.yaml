@@ -1,0 +1,113 @@
+# generated: 2026-04-02
+# last_updated: 2026-04-02
+# project: jupyter-browser-kernel
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/docs/stories
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-04-02
+last_updated: 2026-04-02
+project: jupyter-browser-kernel
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/docs/stories"
+
+development_status:
+  # ── Epic 1: Connect and Control Browser Sessions ──────────────────────────
+  epic-1: backlog
+  1-1-initialize-extension-from-starter-template: backlog
+  1-2-configure-browser-endpoint: backlog
+  1-3-connect-to-a-valid-browser-target: backlog
+  1-4-disconnect-and-manual-reconnect-lifecycle: backlog
+  1-5-preserve-devtools-coexistence: backlog
+  1-6-surface-connection-state-and-recovery-actions: backlog
+  epic-1-retrospective: optional
+
+  # ── Epic 2: Execute JavaScript Cells (No Intentional Capture) ─────────────
+  epic-2: backlog
+  2-1-run-synchronous-javascript-cells: backlog
+  2-2-run-asynchronous-javascript-cells: backlog
+  2-3-normalize-success-and-failure-output-contracts: backlog
+  2-4-support-fast-rerun-and-iteration-patterns: backlog
+  epic-2-retrospective: optional
+
+  # ── Epic 3: Capture Intentional Logs ─────────────────────────────────────
+  epic-3: backlog
+  3-1-define-intentional-log-capture-runtime-helper: backlog
+  3-2-route-captured-logs-to-notebook-cell-output: backlog
+  3-3-distinguish-intentional-logs-from-ambient-console-activity: backlog
+  epic-3-retrospective: optional
+
+  # ── Epic 4: Capture Intentional Values (Basic) ───────────────────────────
+  epic-4: backlog
+  4-1-return-execution-values-to-notebook-output: backlog
+  4-2-display-structured-value-output-with-type-context: backlog
+  4-3-preserve-session-scoped-execution-history: backlog
+  epic-4-retrospective: optional
+
+  # ── Epic 5: Present Complex Variables and Watches (Post-MVP Core) ─────────
+  epic-5: backlog
+  5-1-create-and-refresh-watched-expressions: backlog
+  5-2-add-depth-limited-projection-and-nested-expansion: backlog
+  5-3-isolate-watch-evaluation-failures: backlog
+  epic-5-retrospective: optional
+
+  # ── Epic 6: Safe Experimentation and Core Reliability ─────────────────────
+  epic-6: backlog
+  6-1-validate-core-pipeline-with-deterministic-fixtures: backlog
+  6-2-support-forward-and-rollback-cell-patterns: backlog
+  6-3-preserve-multi-version-iteration-in-one-session: backlog
+  epic-6-retrospective: optional
+
+  # ── Epic 7: Enable Foundry Profile Eligibility and Runtime (Post-MVP Profile)
+  epic-7: backlog
+  7-1-implement-foundry-target-matching-rules: backlog
+  7-2-inject-extension-owned-runtime-envelope: backlog
+  7-3-classify-foundry-target-eligibility-states: backlog
+  7-4-provide-actionable-non-eligible-guidance: backlog
+  7-5-gate-execution-by-eligibility-and-proceed-when-ready: backlog
+  epic-7-retrospective: optional
+
+  # ── Epic 8: Deliver Foundry Productivity Workflows (Post-MVP Profile) ─────
+  epic-8: backlog
+  8-1-enable-notebook-first-foundry-macro-iteration: backlog
+  8-2-provide-foundry-starter-notebook: backlog
+  8-3-save-notebook-cell-as-reusable-action: backlog
+  8-4-reopen-and-execute-saved-actions-with-prompts: backlog
+  epic-8-retrospective: optional
+
+  # ── Epic 9: Prompted Input Substitution (Post-MVP Core) ───────────────────
+  epic-9: backlog
+  9-1-define-prompt-placeholder-substitution-flow: backlog
+  9-2-validate-placeholder-resolution-and-cancellation-paths: backlog
+  9-3-surface-prompt-diagnostics-and-recovery-guidance: backlog
+  epic-9-retrospective: optional
