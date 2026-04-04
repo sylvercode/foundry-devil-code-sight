@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
+import {
+  createDefaultConnectCommandRuntime,
+  executeConnectCommand,
+} from "./commands/connect-command";
 
 export function activate(context: vscode.ExtensionContext): void {
   const disposable = vscode.commands.registerCommand(
     "jupyterBrowserKernel.connect",
-    () => {
-      vscode.window.showInformationMessage(
-        "Jupyter Browser Kernel: Extension activated — CDP connection not yet implemented.",
-      );
+    async () => {
+      await executeConnectCommand(createDefaultConnectCommandRuntime(vscode));
     },
   );
   context.subscriptions.push(disposable);

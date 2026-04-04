@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# esbuild output
+# Build outputs
 dist/
+out/
 .tmp/
 .artifacts/
 bmad-sync-summary.json

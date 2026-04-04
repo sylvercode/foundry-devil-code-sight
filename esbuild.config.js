@@ -24,6 +24,7 @@ const buildOptions = {
     format: 'esm',
     platform: 'node',
     target: 'node20',
+    tsconfig: 'tsconfig.json',
     sourcemap: true,
     minify: false,
     logLevel: 'info',

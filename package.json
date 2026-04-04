@@ -1,20 +1,24 @@
 {
   "name": "jupyter-browser-kernel",
-  "displayName": "Jupyter Browser Kernel",
-  "description": "Connect to a running Browser instance via CDP for variable watching, JS scratchpad execution, and log streaming.",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.0.1",
   "publisher": "sylvercode",
   "license": "MIT",
   "engines": {
     "vscode": "^1.92.0"
   },
-  "extensionKind": ["workspace", "ui"],
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "categories": [
     "Debuggers",
     "Notebooks",
     "Other"
   ],
   "main": "./dist/extension.mjs",
+  "l10n": "./l10n",
   "extensionDependencies": [
     "ms-toolsai.jupyter"
   ],
@@ -22,26 +26,31 @@
     "commands": [
       {
         "command": "jupyterBrowserKernel.connect",
-        "title": "Jupyter Browser Kernel: Connect via CDP"
+        "title": "%command.connect.title%"
       }
     ],
     "configuration": {
-      "title": "Jupyter Browser Kernel",
+      "title": "%configuration.title%",
       "properties": {
         "jupyterBrowserKernel.cdpHost": {
           "type": "string",
           "default": "localhost",
-          "description": "Hostname or IP of the CDP endpoint."
+          "description": "%configuration.cdpHost.description%",
+          "markdownDescription": "%configuration.cdpHost.markdownDescription%"
         },
         "jupyterBrowserKernel.cdpPort": {
           "type": "number",
           "default": 9222,
-          "description": "CDP remote debugging port."
+          "description": "%configuration.cdpPort.description%",
+          "minimum": 1,
+          "maximum": 65535,
+          "multipleOf": 1,
+          "markdownDescription": "%configuration.cdpPort.markdownDescription%"
         },
         "jupyterBrowserKernel.watchAutoRefreshInterval": {
           "type": "number",
           "default": 0,
-          "description": "Auto-refresh interval in ms for the variable watcher. 0 = disabled."
+          "description": "%configuration.watchAutoRefreshInterval.description%"
         }
       }
     }
@@ -62,6 +71,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.92.0",
+    "@vscode/l10n": "^0.0.18",
     "@vscode/test-electron": "^2.3.8",
     "esbuild": "^0.20.0",
     "eslint": "^9.0.0",
