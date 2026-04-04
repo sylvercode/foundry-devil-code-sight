@@ -1,0 +1,11 @@
+{
+  "extension.displayName": "Jupyter Browser Kernel",
+  "extension.description": "Connect to a running Browser instance via CDP for variable watching, JS scratchpad execution, and log streaming.",
+  "command.connect.title": "Jupyter Browser Kernel: Connect via CDP",
+  "configuration.title": "Jupyter Browser Kernel",
+  "configuration.cdpHost.description": "CDP endpoint host name or IP address.",
+  "configuration.cdpHost.markdownDescription": "Host for the Browser CDP endpoint. Use a resolvable hostname or IP address, for example `localhost` or `127.0.0.1`.",
+  "configuration.cdpPort.description": "CDP remote debugging TCP port.",
+  "configuration.cdpPort.markdownDescription": "TCP port for the Browser CDP endpoint. Set a whole number from `1` to `65535`.",
+  "configuration.watchAutoRefreshInterval.description": "Auto-refresh interval in ms for the variable watcher. 0 = disabled."
+}

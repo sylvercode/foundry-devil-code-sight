@@ -1,0 +1,9 @@
+{
+  "Open Settings": "Open Settings",
+  "{0} {1}": "{0} {1}",
+  "Jupyter Browser Kernel: Endpoint {0} validated. CDP connection not yet implemented.": "Jupyter Browser Kernel: Endpoint {0} validated. CDP connection not yet implemented.",
+  "Invalid CDP host: host cannot be empty.": "Invalid CDP host: host cannot be empty.",
+  "Set jupyterBrowserKernel.cdpHost to a hostname or IP address, for example localhost.": "Set jupyterBrowserKernel.cdpHost to a hostname or IP address, for example localhost.",
+  "Invalid CDP port: port must be an integer between 1 and 65535.": "Invalid CDP port: port must be an integer between 1 and 65535.",
+  "Set jupyterBrowserKernel.cdpPort to a whole number between 1 and 65535.": "Set jupyterBrowserKernel.cdpPort to a whole number between 1 and 65535."
+}
