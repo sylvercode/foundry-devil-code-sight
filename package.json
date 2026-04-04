@@ -6,14 +6,15 @@
   "publisher": "sylvercode",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.92.0"
   },
+  "extensionKind": ["workspace", "ui"],
   "categories": [
     "Debuggers",
     "Notebooks",
     "Other"
   ],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.mjs",
   "extensionDependencies": [
     "ms-toolsai.jupyter"
   ],
@@ -49,9 +50,10 @@
     "bmad:sync:build": "mkdir -p .tmp && esbuild scripts/bmad-github-sync.ts --bundle --platform=node --format=cjs --outfile=.tmp/bmad-github-sync.cjs",
     "bmad:sync": "npm run bmad:sync:build && node .tmp/bmad-github-sync.cjs",
     "bmad:sync:dry": "BMAD_SYNC_DRY_RUN=true npm run bmad:sync",
-    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
-    "watch": "npm run compile -- --watch",
-    "lint": "eslint src --ext ts",
+    "compile": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "test": "vscode-test"
   },
   "dependencies": {
@@ -59,10 +61,11 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.92.0",
     "@vscode/test-electron": "^2.3.8",
     "esbuild": "^0.20.0",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.3"
+    "eslint": "^9.0.0",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.0.0"
   }
 }

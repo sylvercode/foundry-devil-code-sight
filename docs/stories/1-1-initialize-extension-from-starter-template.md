@@ -2,7 +2,7 @@
 storyId: "1.1"
 storyKey: "1-1-initialize-extension-from-starter-template"
 title: "Initialize Extension from Starter Template"
-status: "review"
+status: "done"
 created: "2026-04-02"
 epic: "1"
 priority: "p0-blocker"
@@ -10,7 +10,7 @@ priority: "p0-blocker"
 
 # Story 1.1: Initialize Extension from Starter Template
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -91,6 +91,13 @@ So that the project structure, build pipeline, and ESM output compatibility are 
 - [x] Confirm repository is already initialized and tracking scaffold files
   - [x] Ensure `.gitignore` includes `node_modules/`, `dist/`, `.vscode-test/`
   - [x] Create a normal commit after scaffold verification
+
+### Review Findings
+
+- [x] [Review][Decision] Edge DevTools removed from extensionDependencies — Intentional. copilot-instructions.md updated to remove hard dependency. [package.json:17-19]
+- [x] [Review][Decision] package.json not updated for ESM pipeline — Fixed: main, scripts, engines, devDeps all updated for ESM. [package.json, esbuild.config.js]
+- [x] [Review][Patch] Launch.json outFiles glob won't match .mjs — Fixed: glob updated to `*.mjs`. [.vscode/launch.json:7]
+- [x] [Review][Patch] copilot-instructions.md namespace mismatch — Fixed: updated to `jupyterBrowserKernel.*` throughout. [copilot-instructions.md]
 
 ## Dev Notes
 

@@ -37,17 +37,16 @@ If the PRD and the existing code disagree, preserve working code unless the task
 - Language: TypeScript with strict mode.
 - Runtime: VS Code extension APIs.
 - CDP client library: `chrome-remote-interface`.
-- Bundling: esbuild to a single CommonJS extension entry.
+- Bundling: esbuild to a single ESM extension entry (`dist/extension.mjs`).
 - Notebook dependency: `ms-toolsai.jupyter` must remain in `extensionDependencies`.
-- Debug integration dependency: `ms-edgedevtools.vscode-edge-devtools` must remain in `extensionDependencies`.
-- Activation event should remain scoped to `onCommand:foundryDevilCodeSight.connect` unless requirements change.
-- Settings use the `foundryDevilCodeSight.*` namespace.
+- Activation event should remain scoped to `onCommand:jupyterBrowserKernel.connect` unless requirements change.
+- Settings use the `jupyterBrowserKernel.*` namespace.
 
 Current contributed settings from `package.json` are:
 
-- `foundryDevilCodeSight.cdpHost`
-- `foundryDevilCodeSight.cdpPort`
-- `foundryDevilCodeSight.watchAutoRefreshInterval`
+- `jupyterBrowserKernel.cdpHost`
+- `jupyterBrowserKernel.cdpPort`
+- `jupyterBrowserKernel.watchAutoRefreshInterval`
 
 ## Planning Constraints From The PRD
 
