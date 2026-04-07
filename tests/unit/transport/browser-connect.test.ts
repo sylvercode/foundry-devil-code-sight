@@ -15,11 +15,29 @@ test("rewriteBrowserWebSocketUrl uses configured endpoint host and port", () => 
   );
 });
 
-test("rewriteBrowserWebSocketUrl preserves localhost endpoint host", () => {
+test("rewriteBrowserWebSocketUrl preserves browser-reported loopback host", () => {
   const rewritten = rewriteBrowserWebSocketUrl(
     "ws://localhost:9222/devtools/browser/browser-id",
     { host: "localhost", port: 9222 },
   );
 
   assert.equal(rewritten, "ws://localhost:9222/devtools/browser/browser-id");
+});
+
+test("rewriteBrowserWebSocketUrl preserves IPv6 loopback from browser", () => {
+  const rewritten = rewriteBrowserWebSocketUrl(
+    "ws://[::1]:9222/devtools/browser/browser-id",
+    { host: "localhost", port: 9222 },
+  );
+
+  assert.equal(rewritten, "ws://[::1]:9222/devtools/browser/browser-id");
+});
+
+test("rewriteBrowserWebSocketUrl preserves IPv6 loopback with IPv6 endpoint", () => {
+  const rewritten = rewriteBrowserWebSocketUrl(
+    "ws://[::1]:9222/devtools/browser/browser-id",
+    { host: "::1", port: 9222 },
+  );
+
+  assert.equal(rewritten, "ws://[::1]:9222/devtools/browser/browser-id");
 });

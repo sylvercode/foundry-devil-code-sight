@@ -5,6 +5,7 @@ import {
 } from "./commands/connect-command";
 import { createConnectionStateStore } from "./transport/connection-state";
 import { createConnectionStatusIndicator } from "./ui/connection-status-indicator";
+import { disconnectActiveBrowserConnection } from "./transport/browser-connect";
 
 export function activate(context: vscode.ExtensionContext): void {
   const connectionStateStore = createConnectionStateStore();
@@ -28,4 +29,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-export function deactivate(): void {}
+export function deactivate(): Promise<void> {
+  return disconnectActiveBrowserConnection();
+}

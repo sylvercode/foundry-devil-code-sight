@@ -35,6 +35,11 @@ interface CriTargetDescriptor extends ListTargetResponse {
 
 interface CdpClient {
   close: () => Promise<void> | void;
+  send: (
+    method: string,
+    params?: unknown,
+    sessionId?: string,
+  ) => Promise<unknown>;
   Target: {
     getTargets: () => Promise<{ targetInfos?: BrowserTargetInfo[] }>;
     attachToTarget: (args: {
@@ -42,6 +47,35 @@ interface CdpClient {
       flatten: true;
     }) => Promise<{ sessionId: string }>;
   };
+}
+
+export interface ActiveBrowserConnection {
+  targetId: string;
+  sessionId: string;
+  endpoint: EndpointConfig;
+  close: () => Promise<void>;
+}
+
+let activeBrowserConnection: ActiveBrowserConnection | undefined;
+
+async function clearActiveBrowserConnection(): Promise<void> {
+  if (!activeBrowserConnection) {
+    return;
+  }
+
+  const current = activeBrowserConnection;
+  activeBrowserConnection = undefined;
+  await current.close();
+}
+
+export function getActiveBrowserConnection():
+  | ActiveBrowserConnection
+  | undefined {
+  return activeBrowserConnection;
+}
+
+export async function disconnectActiveBrowserConnection(): Promise<void> {
+  await clearActiveBrowserConnection();
 }
 
 interface NativeWebSocketLike {
@@ -341,14 +375,30 @@ async function connectNativeRawCdpClient(
     pending.clear();
   });
 
-  const sendCommand = (method: string, params?: unknown): Promise<unknown> => {
+  const sendCommand = (
+    method: string,
+    params?: unknown,
+    sessionId?: string,
+  ): Promise<unknown> => {
     return new Promise<unknown>((resolve, reject) => {
       const id = nextId;
       nextId += 1;
       pending.set(id, { resolve, reject });
 
-      const payload =
-        params === undefined ? { id, method } : { id, method, params };
+      const payload: {
+        id: number;
+        method: string;
+        params?: unknown;
+        sessionId?: string;
+      } = { id, method };
+
+      if (params !== undefined) {
+        payload.params = params;
+      }
+
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        payload.sessionId = sessionId;
+      }
 
       try {
         socket.send(JSON.stringify(payload));
@@ -367,6 +417,7 @@ async function connectNativeRawCdpClient(
 
       socket.close();
     },
+    send: sendCommand,
     Target: {
       getTargets: async () =>
         (await sendCommand("Target.getTargets")) as {
@@ -453,14 +504,31 @@ async function connectRawCdpClient(webSocketUrl: string): Promise<CdpClient> {
     pending.clear();
   });
 
-  const sendCommand = (method: string, params?: unknown): Promise<unknown> => {
+  const sendCommand = (
+    method: string,
+    params?: unknown,
+    sessionId?: string,
+  ): Promise<unknown> => {
     return new Promise<unknown>((resolve, reject) => {
       const id = nextId;
       nextId += 1;
       pending.set(id, { resolve, reject });
 
-      const payload =
-        params === undefined ? { id, method } : { id, method, params };
+      const payload: {
+        id: number;
+        method: string;
+        params?: unknown;
+        sessionId?: string;
+      } = { id, method };
+
+      if (params !== undefined) {
+        payload.params = params;
+      }
+
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        payload.sessionId = sessionId;
+      }
+
       socket!.send(JSON.stringify(payload), (error?: Error) => {
         if (!error) {
           return;
@@ -485,6 +553,7 @@ async function connectRawCdpClient(webSocketUrl: string): Promise<CdpClient> {
         socket!.close();
       });
     },
+    send: sendCommand,
     Target: {
       getTargets: async () =>
         (await sendCommand("Target.getTargets")) as {
@@ -516,9 +585,21 @@ async function connectCdpClient(webSocketUrl: string): Promise<CdpClient> {
   }
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+function isLoopbackHost(host: string): boolean {
+  return LOOPBACK_HOSTS.has(host);
+}
+
+/**
+ * Normalize a configured host for HTTP/WebSocket connections.
+ * Edge typically binds its debug server to `[::1]` (IPv6 loopback).
+ * When the user configures `localhost` or leaves the default, we
+ * resolve to `::1` to match Edge's binding.
+ */
 function normalizeEndpointHost(host: string): string {
-  if (host === "::1") {
-    return "localhost";
+  if (host === "localhost") {
+    return "[::1]";
   }
 
   return host;
@@ -529,7 +610,17 @@ export function rewriteBrowserWebSocketUrl(
   endpoint: EndpointConfig,
 ): string {
   const url = new URL(browserWebSocketUrl);
-  url.hostname = normalizeEndpointHost(endpoint.host);
+  const browserHost = url.hostname;
+
+  // When both the browser-reported host and the configured endpoint
+  // are loopback addresses, prefer the browser-reported one — the
+  // browser knows which loopback interface it bound to.
+  if (isLoopbackHost(browserHost) && isLoopbackHost(endpoint.host)) {
+    url.hostname = browserHost;
+  } else {
+    url.hostname = normalizeEndpointHost(endpoint.host);
+  }
+
   url.port = String(endpoint.port);
   return url.toString();
 }
@@ -704,6 +795,57 @@ function createStepError(step: string, error: unknown): Error {
   return new Error(`${step}: ${getErrorMessage(error)}`);
 }
 
+async function verifyRuntimeProbe(
+  client: CdpClient,
+  localize: Localize,
+  sessionId?: string,
+): Promise<void> {
+  let evaluationResult: unknown;
+
+  try {
+    evaluationResult = await client.send(
+      "Runtime.evaluate",
+      {
+        expression: "1 + 1",
+        returnByValue: true,
+        awaitPromise: true,
+      },
+      sessionId,
+    );
+  } catch (error) {
+    throw new Error(
+      localize({
+        message: "Runtime probe command failed: {0}",
+        args: [getErrorMessage(error)],
+        comment: ["{0} is the CDP Runtime.evaluate failure message."],
+      }),
+    );
+  }
+
+  if (typeof evaluationResult !== "object" || evaluationResult === null) {
+    throw new Error(localize("Runtime probe returned no result object."));
+  }
+
+  const details = evaluationResult as {
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  };
+
+  if (details.exceptionDetails) {
+    throw new Error(localize("Runtime probe raised exception details."));
+  }
+
+  if (details.result?.value !== 2) {
+    throw new Error(
+      localize({
+        message: "Runtime probe returned unexpected value: {0}",
+        args: [String(details.result?.value)],
+        comment: ["{0} is the value returned by Runtime.evaluate."],
+      }),
+    );
+  }
+}
+
 function runtimeContextSummary(): string {
   return `runtime=${process.platform} host=${os.hostname()}`;
 }
@@ -804,6 +946,26 @@ async function connectViaBrowserTargetAttach(
       throw createStepError("Target.attachToTarget", error);
     }
 
+    try {
+      await verifyRuntimeProbe(client, localize, attachResult.sessionId);
+    } catch (error) {
+      throw createStepError("Runtime.evaluate(probe)", error);
+    }
+
+    await clearActiveBrowserConnection();
+
+    const retainedClient = client;
+    activeBrowserConnection = {
+      targetId: targetSelection.target.targetId,
+      sessionId: attachResult.sessionId,
+      endpoint,
+      close: async () => {
+        await safeClose(retainedClient);
+      },
+    };
+
+    client = undefined;
+
     return {
       ok: true,
       endpoint,
@@ -870,6 +1032,26 @@ async function connectViaDirectTargetWebSocket(
       local: true,
     })) as CdpClient;
 
+    try {
+      await verifyRuntimeProbe(directClient, localize);
+    } catch (error) {
+      throw createStepError("direct.Runtime.evaluate(probe)", error);
+    }
+
+    await clearActiveBrowserConnection();
+
+    const retainedClient = directClient;
+    activeBrowserConnection = {
+      targetId: targetSelection.target.targetId,
+      sessionId: `direct:${targetSelection.target.targetId}`,
+      endpoint,
+      close: async () => {
+        await safeClose(retainedClient);
+      },
+    };
+
+    directClient = undefined;
+
     return {
       ok: true,
       endpoint,
@@ -929,6 +1111,26 @@ async function connectViaCriTargetSelection(
     } catch (error) {
       throw createStepError("CRI.hostPortTargetConnect", error);
     }
+
+    try {
+      await verifyRuntimeProbe(client, localize);
+    } catch (error) {
+      throw createStepError("CRI.Runtime.evaluate(probe)", error);
+    }
+
+    await clearActiveBrowserConnection();
+
+    const retainedClient = client;
+    activeBrowserConnection = {
+      targetId: selectedTargetId || localize("unknown-target"),
+      sessionId: `cri:${selectedTargetId || "unknown"}`,
+      endpoint,
+      close: async () => {
+        await safeClose(retainedClient);
+      },
+    };
+
+    client = undefined;
 
     return {
       ok: true,
@@ -991,6 +1193,26 @@ async function connectViaKnownBrowserWebSocketPath(
     } catch (error) {
       throw createStepError("knownBrowserPath.Target.attachToTarget", error);
     }
+
+    try {
+      await verifyRuntimeProbe(client, localize, attachResult.sessionId);
+    } catch (error) {
+      throw createStepError("knownBrowserPath.Runtime.evaluate(probe)", error);
+    }
+
+    await clearActiveBrowserConnection();
+
+    const retainedClient = client;
+    activeBrowserConnection = {
+      targetId: targetSelection.target.targetId,
+      sessionId: attachResult.sessionId,
+      endpoint,
+      close: async () => {
+        await safeClose(retainedClient);
+      },
+    };
+
+    client = undefined;
 
     return {
       ok: true,
