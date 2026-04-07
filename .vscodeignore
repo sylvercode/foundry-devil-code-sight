@@ -19,7 +19,7 @@ tsconfig.test.json
 **/*.map
 **/*.ts
 **/*.tsx
-dist/extension.mjs
+dist/extension.js
 
 .gitignore
 node_modules/**/.bin/**

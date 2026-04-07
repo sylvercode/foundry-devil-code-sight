@@ -16,7 +16,7 @@
     "Notebooks",
     "Other"
   ],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.mjs",
   "l10n": "./l10n",
   "extensionDependencies": [],
   "contributes": {

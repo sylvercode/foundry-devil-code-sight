@@ -446,7 +446,7 @@ jupyter-browser-kernel/
 │       ├── fake-profile.ts
 │       └── chromium-harness.ts
 └── dist/
-  └── extension.js
+  └── extension.mjs
 ```
 
 ### Architectural Boundaries

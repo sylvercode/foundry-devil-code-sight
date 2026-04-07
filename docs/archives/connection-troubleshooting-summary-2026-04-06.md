@@ -40,19 +40,20 @@ Edge was launched with:
 
 ### Extension activation issue was isolated and addressed
 
-The earlier activation failure (`Dynamic require of "events" is not supported`) was traced to stale ESM artifact loading (`dist/extension.mjs`) and debug/package path mismatch. Build/debug wiring was adjusted to CommonJS output and clean-first builds.
+The earlier activation failure (`Dynamic require of "events" is not supported`) was traced to stale artifact loading and debug/package path mismatch. Clean-first builds were added, and transport dependencies remained externalized so the ESM bundle does not emit unsupported dynamic require shims.
 
 ## Changes Tried In Code/Build
 
 ### Build and packaging
 
-- Switched extension build output to CommonJS (`dist/extension.js`).
 - Reintroduced `ws` as external dependency in build config.
-- Updated extension `main` entry to `./dist/extension.js`.
+- Kept `chrome-remote-interface` and `ws` external to the bundle.
+- Restored extension build output to ESM (`dist/extension.mjs`).
+- Updated extension `main` entry to `./dist/extension.mjs`.
 - Added clean script to remove `dist` and `out`.
 - Made compile/package scripts clean before build.
-- Updated debug launch/task wiring to compile fresh and map to `dist/**/*.js`.
-- Added `.vscodeignore` guard for stale `dist/extension.mjs`.
+- Updated debug launch/task wiring to compile fresh and map to `dist/**/*.mjs`.
+- Added `.vscodeignore` guard for stale `dist/extension.js`.
 
 ### Transport connection logic
 

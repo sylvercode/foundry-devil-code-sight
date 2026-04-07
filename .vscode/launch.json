@@ -7,7 +7,7 @@
     {
       "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
       "name": "Launch Extension",
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.mjs"],
       "preLaunchTask": "npm: compile",
       "request": "launch",
       "type": "extensionHost"

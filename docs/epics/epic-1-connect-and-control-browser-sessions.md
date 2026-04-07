@@ -17,8 +17,8 @@ So that the project structure, build pipeline, and ESM output compatibility are 
 
 **Given** the scaffolded project
 **When** esbuild bundles the extension
-**Then** the output is a single CommonJS entry point compatible with VS Code extension host
-**And** no ESM-only import failures occur at load time.
+**Then** the output is a single ESM entry point compatible with VS Code extension host
+**And** no CommonJS interop shims cause activation failures at load time.
 
 **Given** the initial project structure
 **When** reviewed against architecture constraints
