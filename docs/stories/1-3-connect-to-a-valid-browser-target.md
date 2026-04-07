@@ -58,7 +58,8 @@ So that I can begin notebook execution quickly.
   - [x] Resolve browser-level WebSocket URL from `/json/version`.
   - [x] Connect to browser target (not page target) to preserve DevTools coexistence.
 - [x] Enumerate targets and apply profile matching.
-  - [x] Match only page targets eligible for this profile (current planning constraint: URL includes `/game`).
+  - [x] Match only eligible page targets for the active profile.
+  - [x] Keep the current core profile broad (`type === page`); defer Foundry-specific URL matching to Epic 7.
   - [x] If one eligible target exists, select it deterministically.
   - [x] If no eligible targets exist, return categorized `target-mismatch`.
 - [x] Attach with `Target.attachToTarget({ flatten: true })` and capture `sessionId` for future operations.
@@ -71,7 +72,7 @@ So that I can begin notebook execution quickly.
 - [x] For `target-mismatch`, provide concrete next steps.
   - [x] Check browser tab selection / active target context.
   - [x] Verify endpoint host/port configuration.
-  - [x] Confirm profile-specific target URL expectations.
+  - [x] Confirm at least one browser page target is available to CDP.
 - [x] Continue to redact sensitive endpoint details in user-facing errors.
 
 ### 4. Status Indicator Surface (AC: 1)
@@ -142,17 +143,17 @@ So that I can begin notebook execution quickly.
 
 ### Manual Test Checklist
 
-- [ ] Set valid endpoint (`jupyterBrowserKernel.cdpHost`, `jupyterBrowserKernel.cdpPort`) and run connect.
-  - [ ] Confirm status changes to `Connecting`, then `Connected` on success.
-- [ ] With browser running but no eligible target open, run connect.
-  - [ ] Confirm final status `Error`.
-  - [ ] Confirm diagnostic includes `target-mismatch` category and actionable next steps.
-- [ ] With invalid endpoint settings, run connect.
-  - [ ] Confirm existing endpoint validation (Story 1.2) blocks before transport attempts.
-- [ ] With multiple page targets including at least one eligible profile target, run connect.
-  - [ ] Confirm deterministic target selection behavior and stable final state.
-- [ ] Attach Edge/DevTools to the same browser context and rerun connect.
-  - [ ] Confirm no forced disconnect behavior is introduced.
+- [x] Set valid endpoint (`jupyterBrowserKernel.cdpHost`, `jupyterBrowserKernel.cdpPort`) and run connect.
+  - [x] Confirm status changes to `Connecting`, then `Connected` on success.
+- [x] With browser reachable but no page targets available to CDP, run connect.
+  - [x] Confirm final status `Error`.
+  - [x] Confirm diagnostic includes `target-mismatch` category and actionable next steps.
+- [x] With invalid endpoint settings, run connect.
+  - [x] Confirm existing endpoint validation (Story 1.2) blocks before transport attempts.
+- [x] With multiple page targets available, run connect.
+  - [x] Confirm deterministic target selection behavior and stable final state.
+- [x] Attach Edge/DevTools to the same browser context and rerun connect.
+  - [x] Confirm no forced disconnect behavior is introduced.
 
 ### Previous Story Intelligence (Story 1.2)
 
@@ -202,7 +203,7 @@ GPT-5.3-Codex
 ### Implementation Plan
 
 - Add transport-owned state model and transition helper to centralize deterministic connect lifecycle.
-- Implement browser-level CDP connect and profile-owned target selection for Foundry eligibility.
+- Implement browser-level CDP connect and profile-owned target selection for core page-target eligibility.
 - Keep connect command focused on orchestration, endpoint validation reuse, and normalized diagnostics.
 - Add a single status indicator surface bound to runtime connection-state updates.
 - Add unit tests first for transitions, target matching, and diagnostics, then implement until green.
@@ -211,11 +212,11 @@ GPT-5.3-Codex
 
 - Comprehensive context assembled from epic, PRD, architecture, UX specs, CDP spike findings, previous story intelligence, and current repository reality.
 - Implemented canonical connection-state transitions in runtime (`connecting` then `connected`/`error`) and wired single status indicator text labels for disconnected/connecting/connected/error.
-- Added browser-level CDP connect flow via `/json/version` websocket discovery, deterministic Foundry target selection (`/game`), and `Target.attachToTarget({ flatten: true })` session capture.
+- Added browser-level CDP connect flow via `/json/version` websocket discovery, deterministic core page-target selection, and `Target.attachToTarget({ flatten: true })` session capture.
 - Added normalized categorized connect diagnostics with actionable `target-mismatch` guidance and preserved endpoint redaction in user-facing messages.
 - Updated `chrome-remote-interface` to `^0.34.0` and added strict TypeScript declarations for compile safety.
 - Added and passed unit coverage for state transitions, target matching behavior, and diagnostic messaging.
-- Foundry Profile logic have been drop since it is the goal of epic 7. For now only a profile architecture that could be extend later is in place.
+- Foundry profile logic has been deferred to Epic 7. For now, only an extensible profile architecture is in place.
 
 ### File List
 
