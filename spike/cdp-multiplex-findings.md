@@ -157,6 +157,8 @@ export class CdpClient {
   /** Connect to the browser-level WebSocket */
   async connect(host: string, port: number): Promise<void> {
     const info = await this._getVersionInfo(host, port);
+    // Rewrite localhost/127.0.0.1 when the client runs remotely from the browser host
+    // (for example devcontainer/WSL -> host machine).
     const wsUrl = info.webSocketDebuggerUrl
       .replace("127.0.0.1", host)
       .replace("localhost", host);

@@ -1,4 +1,5 @@
 import os from "node:os";
+import { isIP } from "node:net";
 import CDP from "chrome-remote-interface";
 
 import type { EndpointConfig, Localize } from "../config/endpoint-config";
@@ -20,7 +21,6 @@ export interface ActiveBrowserConnection {
 let activeBrowserConnection: ActiveBrowserConnection | undefined;
 
 const passthroughLocalize = ((input: string): string => input) as Localize;
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 async function clearActiveBrowserConnection(): Promise<void> {
   if (!activeBrowserConnection) {
@@ -42,55 +42,32 @@ export async function disconnectActiveBrowserConnection(): Promise<void> {
   await clearActiveBrowserConnection();
 }
 
-function isLoopbackHost(host: string): boolean {
-  return LOOPBACK_HOSTS.has(host);
-}
-
-function normalizeEndpointHost(host: string): string {
-  if (host === "localhost") {
-    return "[::1]";
-  }
-
-  return host;
-}
-
-export function rewriteBrowserWebSocketUrl(
-  browserWebSocketUrl: string,
-  endpoint: EndpointConfig,
-): string {
-  const url = new URL(browserWebSocketUrl);
-  const browserHost = url.hostname;
-
-  if (isLoopbackHost(browserHost) && isLoopbackHost(endpoint.host)) {
-    url.hostname = browserHost;
-  } else {
-    url.hostname = normalizeEndpointHost(endpoint.host);
-  }
-
-  url.port = String(endpoint.port);
-  return url.toString();
-}
-
 export async function resolveBrowserWebSocketUrl(
-  endpoint: EndpointConfig,
+  { host, port }: EndpointConfig,
   localize: Localize = passthroughLocalize,
 ): Promise<string> {
-  let payload: CDP.VersionResult;
-  try {
-    payload = await CDP.Version({
-      host: normalizeEndpointHost(endpoint.host),
-      port: endpoint.port,
-      useHostName: true,
-    });
-  } catch (error) {
-    throw new Error(
-      localize({
-        message: "CDP.Version failed: {0}",
-        args: [getErrorMessage(error)],
-        comment: ["{0} is the failure reason from CDP.Version."],
-      }),
-    );
-  }
+  const useHostName = host === "localhost" || isIP(host) !== 0;
+
+  const payload = await (() => {
+    try {
+      return CDP.Version({
+        host,
+        port,
+        // Edge accepts Host headers for localhost and IP addresses.
+        // Other DNS names can fail with:
+        // "Host header is specified and is not an IP address or localhost."
+        useHostName,
+      });
+    } catch (error) {
+      throw new Error(
+        localize({
+          message: "CDP.Version failed: {0}",
+          args: [getErrorMessage(error)],
+          comment: ["{0} is the failure reason from CDP.Version."],
+        }),
+      );
+    }
+  })();
 
   const webSocketDebuggerUrl = payload.webSocketDebuggerUrl;
 
@@ -103,7 +80,7 @@ export async function resolveBrowserWebSocketUrl(
     );
   }
 
-  return rewriteBrowserWebSocketUrl(webSocketDebuggerUrl, endpoint);
+  return webSocketDebuggerUrl;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -173,27 +150,27 @@ async function verifyRuntimeProbe(
   localize: Localize,
   sessionId: string,
 ): Promise<void> {
-  let evaluationResult: unknown;
-
-  try {
-    evaluationResult = await client.send(
-      "Runtime.evaluate",
-      {
-        expression: "1 + 1",
-        returnByValue: true,
-        awaitPromise: true,
-      },
-      sessionId,
-    );
-  } catch (error) {
-    throw new Error(
-      localize({
-        message: "Runtime probe command failed: {0}",
-        args: [getErrorMessage(error)],
-        comment: ["{0} is the CDP Runtime.evaluate failure message."],
-      }),
-    );
-  }
+  const evaluationResult = await (() => {
+    try {
+      return client.send(
+        "Runtime.evaluate",
+        {
+          expression: "1 + 1",
+          returnByValue: true,
+          awaitPromise: true,
+        },
+        sessionId,
+      );
+    } catch (error) {
+      throw new Error(
+        localize({
+          message: "Runtime probe command failed: {0}",
+          args: [getErrorMessage(error)],
+          comment: ["{0} is the CDP Runtime.evaluate failure message."],
+        }),
+      );
+    }
+  })();
 
   if (typeof evaluationResult !== "object" || evaluationResult === null) {
     throw new Error(localize("Runtime probe returned no result object."));

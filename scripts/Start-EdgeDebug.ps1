@@ -29,7 +29,7 @@ if (-not $EdgePath) {
 }
 
 # Start Microsoft Edge with the specified port for remote debugging.
-# --remote-allow-origins=* avoids websocket upgrade rejections from tooling clients.
+# --remote-allow-origins=* keeps CDP origin checks permissive for tooling scenarios.
 # --no-first-run and --profile-directory --no-default-browser-check ensure a clean profile.
 $EdgeArgs = "--remote-debugging-port=$Port --remote-allow-origins=* --no-first-run --no-default-browser-check"
 if ($ProfileName) {

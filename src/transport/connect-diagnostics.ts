@@ -21,7 +21,7 @@ export function formatConnectFailureMessage(
   if (failure.category !== "target-mismatch") {
     if (/socket hang up/i.test(localizedFailureMessage)) {
       const transportGuidance = localize(
-        "Edge may reject websocket upgrades from tooling clients unless launched with --remote-allow-origins=*.",
+        "Check for local proxy/port-forwarding conflicts (for example VS Code automatic forwarding) and verify cdpHost points to the browser host.",
       );
 
       return `${baseMessage} ${transportGuidance}`;

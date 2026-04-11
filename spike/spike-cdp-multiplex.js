@@ -104,7 +104,8 @@ async function main() {
   if (!versionInfo.webSocketDebuggerUrl) {
     throw new Error('/json/version did not return webSocketDebuggerUrl');
   }
-  // Replace host if needed (devcontainer → host.docker.internal vs localhost)
+  // Rewrite localhost/127.0.0.1 only when connecting from a remote runtime
+  // (for example devcontainer/WSL) to a browser running on the host machine.
   const rewrittenUrl = versionInfo.webSocketDebuggerUrl
     .replace('localhost', HOST).replace('127.0.0.1', HOST);
   console.log('    browserWsUrl = ' + rewrittenUrl);
