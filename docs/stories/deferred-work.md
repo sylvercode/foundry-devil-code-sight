@@ -11,3 +11,4 @@
 ## Deferred from: code review of 1-3-connect-to-a-valid-browser-target (2026-04-08)
 
 - `connectionStateStore.getState()` is unused interface surface — `getState()` is defined on `ConnectionStateStore` but never called in command or extension code. State is pushed via callbacks, not pulled. Benign unused API.
+- `extensionKind` in `package.json` is set to `"ui"` and `"workspace"` instead of `"ui"` only to make the extention debuggable. When adding CI packaging (**story 1.7**), the `extentionKind` must be patch in the pipeline.
