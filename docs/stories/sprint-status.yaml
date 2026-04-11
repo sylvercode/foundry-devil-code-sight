@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-04-08
+last_updated: 2026-04-11
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -47,7 +47,7 @@ development_status:
   1-1-initialize-extension-from-starter-template: done
   1-2-configure-browser-endpoint: done
   1-3-connect-to-a-valid-browser-target: done
-  1-4-disconnect-and-manual-reconnect-lifecycle: backlog
+  1-4-disconnect-and-manual-reconnect-lifecycle: ready-for-dev
   1-5-preserve-devtools-coexistence: backlog
   1-6-surface-connection-state-and-recovery-actions: backlog
   epic-1-retrospective: optional
