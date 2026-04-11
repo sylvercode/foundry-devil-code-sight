@@ -1,32 +1,23 @@
 [CmdletBinding()]
 param (
-    [Parameter(HelpMessage = "The port number to use for the Edge DevTools Protocol connection.")]
+
+    [Parameter(HelpMessage = "The path to the Microsoft Edge executable.", Mandatory = $true)]
+    [string]
+    $EdgePath,
+
+    [Parameter(HelpMessage = "The port number to use for the Edge DevTools Protocol connection.", Mandatory = $false)]
     [ValidateRange(1, 65535)]
     [int]
     $Port = 9222,
 
-    [Parameter(HelpMessage = "The web address to open a page.")]
+    [Parameter(HelpMessage = "The web address to open a page.", Mandatory = $false)]
     [string]
-    $Url,
-
-    [Parameter(HelpMessage = "The path to the Microsoft Edge executable.")]
-    [string]
-    $EdgePath,
+    $Url = "about:blank",
 
     [Parameter(HelpMessage = "Profile name to use when launching Edge. If not specified, the default profile will be used.")]
     [string]
     $ProfileName
 )
-
-# Check if the EdgePath parameter is provided, if not, use the default path
-if (-not $EdgePath) {
-    # test id msedge executable is available in the system PATH
-    $EdgePath = Get-Command msedge -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
-    if (-not $EdgePath) {
-        Write-Error "Microsoft Edge executable not found. Please provide the path to the Edge executable using the -EdgePath parameter."
-        exit 1
-    }
-}
 
 # Start Microsoft Edge with the specified port for remote debugging.
 # --remote-allow-origins=* keeps CDP origin checks permissive for tooling scenarios.
