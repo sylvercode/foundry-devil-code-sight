@@ -17,7 +17,7 @@ export interface ConnectionStateStore extends Required<ConnectionStateStoreTrans
 }
 
 export interface ConnectionStoreHandler {
-  connectionStateStore?: ConnectionStateStore;
+  connectionStateStore: ConnectionStateStore;
   onConnectionStateChanged?: (state: ConnectionState) => void;
 }
 
@@ -70,7 +70,7 @@ export async function withConnectTransition<T>(
 
   try {
     const result = await connectAttempt();
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+
     const transitionApplied = store.transitionTo(
       transitionId,
       isSuccess(result) ? "connected" : "error",

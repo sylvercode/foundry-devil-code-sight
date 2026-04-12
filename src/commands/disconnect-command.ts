@@ -2,7 +2,6 @@ import type * as vscode from "vscode";
 import type { Localize } from "../config/endpoint-config";
 import {
   ConnectionStoreHandler,
-  createConnectionStateStore,
   type ConnectionStateStore,
 } from "../transport/connection-state";
 import { disconnectActiveBrowserConnection } from "../transport/browser-connect";
@@ -41,13 +40,9 @@ export async function executeDisconnectCommand(
 
 export function createDefaultDisconnectCommandRuntime(
   vscodeApi: typeof vscode,
-  options: DisconnectCommandRuntimeOptions = {},
+  options: DisconnectCommandRuntimeOptions,
 ): DisconnectCommandRuntime {
-  const connectionStateStore =
-    options.connectionStateStore ??
-    createConnectionStateStore({
-      onConnectionStateChanged: options.onConnectionStateChanged,
-    });
+  const connectionStateStore = options.connectionStateStore;
 
   return {
     localize: vscodeApi.l10n.t,

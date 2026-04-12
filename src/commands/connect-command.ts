@@ -8,21 +8,62 @@ import {
 } from "../config/endpoint-config";
 import {
   ConnectionStoreHandler,
-  createConnectionStateStore,
   withConnectTransition,
   type ConnectionStateStore,
 } from "../transport/connection-state";
 import { connectToBrowserTarget } from "../transport/browser-connect";
 import { formatConnectFailureMessage } from "../transport/connect-diagnostics";
-import {
-  settingsKeyForConnectFailure,
-  settingsKeyForEndpointFailure,
-  showSettingsPrompt,
-} from "./command-utils";
 import type {
+  ConnectFailureCategory,
   ConnectToTargetOperation,
   ConnectToTargetResult,
 } from "../transport/connect-types";
+
+async function showSettingsPrompt(
+  runtime: ConnectCommandRuntime,
+  message: string,
+  settingsKey: "cdpHost" | "cdpPort",
+): Promise<void> {
+  const action = runtime.localize("Open Settings");
+
+  let selection: string | undefined;
+  try {
+    selection = await runtime.showErrorMessage(message, action);
+  } catch {
+    return;
+  }
+
+  if (selection !== action) {
+    return;
+  }
+
+  try {
+    await runtime.openSettings(`jupyterBrowserKernel.${settingsKey}`);
+  } catch {
+    // non-fatal: settings pane failed to open, nothing further to do
+  }
+}
+
+function settingsKeyForEndpointFailure(
+  validation: EndpointValidationResult,
+): "cdpHost" | "cdpPort" {
+  const settingsKeyByField: Record<string, "cdpHost" | "cdpPort"> = {
+    host: "cdpHost",
+    port: "cdpPort",
+  };
+
+  if (validation.ok) {
+    return "cdpHost";
+  }
+
+  return settingsKeyByField[validation.error.field] ?? "cdpHost";
+}
+
+function settingsKeyForConnectFailure(
+  category: ConnectFailureCategory,
+): "cdpHost" | "cdpPort" {
+  return category === "endpoint-connectivity" ? "cdpPort" : "cdpHost";
+}
 
 export interface ConnectCommandRuntime {
   readAndValidate: () => EndpointValidationResult;
@@ -43,7 +84,61 @@ export interface ConnectCommandRuntimeOptions extends ConnectionStoreHandler {
   connectToTarget?: ConnectToTargetOperation;
 }
 
-async function runConnect(
+export async function showEndpointValidationSettingsPrompt(
+  runtime: ConnectCommandRuntime,
+  validation: Extract<EndpointValidationResult, { ok: false }>,
+): Promise<void> {
+  await showSettingsPrompt(
+    runtime,
+    runtime.localize({
+      message: "{0} {1}",
+      args: [validation.error.message, validation.error.correctiveAction],
+      comment: [
+        "{0} is the validation failure message.",
+        "{1} is the corrective action the user should take.",
+      ],
+    }),
+    settingsKeyForEndpointFailure(validation),
+  );
+}
+
+export async function showConnectOutcome(
+  runtime: ConnectCommandRuntime,
+  connectResult: ConnectToTargetResult,
+  endpointSummary: string,
+  successMessage: string,
+): Promise<void> {
+  if (!connectResult.ok) {
+    const message = formatConnectFailureMessage(
+      connectResult.failure,
+      endpointSummary,
+      runtime.localize,
+    );
+
+    const settingsKey = settingsKeyForConnectFailure(
+      connectResult.failure.category,
+    );
+    await showSettingsPrompt(runtime, message, settingsKey);
+    return;
+  }
+
+  try {
+    await runtime.showInformationMessage(
+      runtime.localize({
+        message: successMessage,
+        args: [connectResult.connectedTarget.targetId, endpointSummary],
+        comment: [
+          "{0} is the connected target id.",
+          "{1} is the redacted or loopback-safe endpoint summary shown to the user.",
+        ],
+      }),
+    );
+  } catch {
+    // non-fatal: info message failed to display
+  }
+}
+
+export async function runConnect(
   runtime: ConnectCommandRuntime,
   endpoint: EndpointConfig,
 ): Promise<{
@@ -77,18 +172,7 @@ export async function executeConnectCommand(
   const validation = runtime.readAndValidate();
 
   if (!validation.ok) {
-    await showSettingsPrompt(
-      runtime,
-      runtime.localize({
-        message: "{0} {1}",
-        args: [validation.error.message, validation.error.correctiveAction],
-        comment: [
-          "{0} is the validation failure message.",
-          "{1} is the corrective action the user should take.",
-        ],
-      }),
-      settingsKeyForEndpointFailure(validation),
-    );
+    await showEndpointValidationSettingsPrompt(runtime, validation);
     return;
   }
 
@@ -102,46 +186,18 @@ export async function executeConnectCommand(
     return;
   }
 
-  if (!connectResult.ok) {
-    const message = formatConnectFailureMessage(
-      connectResult.failure,
-      endpointSummary,
-      runtime.localize,
-    );
-
-    const settingsKey = settingsKeyForConnectFailure(
-      connectResult.failure.category,
-    );
-    await showSettingsPrompt(runtime, message, settingsKey);
-    return;
-  }
-
-  try {
-    await runtime.showInformationMessage(
-      runtime.localize({
-        message: "Jupyter Browser Kernel: Connected to target {0} at {1}.",
-        args: [connectResult.connectedTarget.targetId, endpointSummary],
-        comment: [
-          "{0} is the connected target id.",
-          "{1} is the redacted or loopback-safe endpoint summary shown to the user.",
-        ],
-      }),
-    );
-  } catch {
-    // non-fatal: info message failed to display
-  }
+  await showConnectOutcome(
+    runtime,
+    connectResult,
+    endpointSummary,
+    "Jupyter Browser Kernel: Connected to target {0} at {1}.",
+  );
 }
 
 export function createDefaultConnectCommandRuntime(
   vscodeApi: typeof vscode,
-  options: ConnectCommandRuntimeOptions = {},
+  options: ConnectCommandRuntimeOptions,
 ): ConnectCommandRuntime {
-  const connectionStateStore =
-    options.connectionStateStore ??
-    createConnectionStateStore({
-      onConnectionStateChanged: options.onConnectionStateChanged,
-    });
-
   return {
     readAndValidate: () =>
       readAndValidateEndpointConfig(
@@ -149,7 +205,7 @@ export function createDefaultConnectCommandRuntime(
         vscodeApi.l10n.t,
       ),
     localize: vscodeApi.l10n.t,
-    connectionStateStore,
+    connectionStateStore: options.connectionStateStore,
     connectToTarget:
       options.connectToTarget ??
       ((endpoint, localize) =>
