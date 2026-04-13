@@ -6,6 +6,7 @@ import CDP from "chrome-remote-interface";
 import {
   connectToBrowserTarget,
   createAttachToTargetParams,
+  toSessionScopedEventName,
 } from "../../../src/transport/browser-connect.js";
 import { coreTargetProfile } from "../../../src/profile/core-target-profile.js";
 import { startHeadlessChromium } from "../helpers/headless-chromium.js";
@@ -118,7 +119,10 @@ test(
       const eventsB: string[] = [];
 
       browser.on(
-        `Runtime.consoleAPICalled.${sessionA.sessionId}`,
+        toSessionScopedEventName(
+          "Runtime.consoleAPICalled",
+          sessionA.sessionId,
+        ),
         (event: { args?: Array<{ value?: unknown }> }) => {
           const values = event.args
             ?.map((arg) => String(arg.value ?? ""))
@@ -128,7 +132,10 @@ test(
       );
 
       browser.on(
-        `Runtime.consoleAPICalled.${sessionB.sessionId}`,
+        toSessionScopedEventName(
+          "Runtime.consoleAPICalled",
+          sessionB.sessionId,
+        ),
         (event: { args?: Array<{ value?: unknown }> }) => {
           const values = event.args
             ?.map((arg) => String(arg.value ?? ""))
@@ -161,6 +168,51 @@ test(
 
       assert.ok(eventsA.some((entry) => entry.includes("coexist-a")));
       assert.ok(eventsB.some((entry) => entry.includes("coexist-b")));
+    } finally {
+      await browser.close();
+    }
+  },
+);
+
+test(
+  "session-scoped event routing guardrail fails when flatten mode is omitted",
+  { skip: !runIntegration },
+  async () => {
+    const browser = await CDP({ host, port: cdpPort });
+
+    try {
+      const { targetInfos } = await browser.Target.getTargets();
+      const pageTarget = targetInfos.find(
+        (target) =>
+          target.type === "page" &&
+          typeof target.url === "string" &&
+          target.url.includes("/game"),
+      );
+
+      assert.ok(pageTarget?.targetId);
+
+      // Intentionally omit flatten and verify flat session routing APIs fail,
+      // proving that flatten mode is required for multiplexed session routing.
+      const nestedSession = await browser.Target.attachToTarget({
+        targetId: pageTarget.targetId,
+      });
+
+      await assert.rejects(
+        async () => {
+          await browser.send(
+            "Runtime.enable",
+            undefined,
+            nestedSession.sessionId,
+          );
+        },
+        (error: unknown) => {
+          const message =
+            typeof error === "object" && error !== null && "message" in error
+              ? String((error as { message?: unknown }).message ?? "")
+              : "";
+          return /Session with given id not found/i.test(message);
+        },
+      );
     } finally {
       await browser.close();
     }

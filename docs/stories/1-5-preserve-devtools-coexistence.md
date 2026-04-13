@@ -2,7 +2,7 @@
 storyId: "1.5"
 storyKey: "1-5-preserve-devtools-coexistence"
 title: "Preserve DevTools Coexistence"
-status: "review"
+status: "done"
 created: "2026-04-12"
 epic: "1"
 priority: "p0"
@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 1.5: Preserve DevTools Coexistence
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -192,6 +192,11 @@ GPT-5.3-Codex
 - Added CDP integration coverage for multi-session coexistence and reconnect viability with an externally attached session.
 - Improved transport-failure diagnostics with explicit coexistence recovery guidance.
 - Validation passed: lint, unit tests, integration test suite (CDP tests gated/skipped without `RUN_CDP_INTEGRATION=1`), and compile.
+
+### Review Findings
+
+- [x] [Review][Patch] Use `toSessionScopedEventName` for integration test event keys to keep session-scoped routing conventions consistent. [tests/integration/transport/browser-connect.integration.test.ts]
+- [x] [Review][Patch] Add negative guardrail coverage for omitted flatten mode to prove coexistence regression detectability. [tests/integration/transport/browser-connect.integration.test.ts]
 
 ### File List
 
