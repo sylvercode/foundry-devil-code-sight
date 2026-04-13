@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-04-12
+last_updated: 2026-04-12T00:00:00.000Z
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -49,7 +49,7 @@ development_status:
   1-3-connect-to-a-valid-browser-target: done
   1-4-disconnect-and-manual-reconnect-lifecycle: done
   1-5-preserve-devtools-coexistence: done
-  1-6-surface-connection-state-and-recovery-actions: backlog
+  1-6-surface-connection-state-and-recovery-actions: ready-for-dev
   epic-1-retrospective: optional
 
   # ── Epic 2: Execute JavaScript Cells (No Intentional Capture) ─────────────
