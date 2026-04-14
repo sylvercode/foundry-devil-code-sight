@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "publisher": "sylvercode",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sylvercode/jupyter-browser-kernel"
+  },
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -68,7 +72,7 @@
     "clean": "node -e \"const fs=require('fs'); for (const d of ['dist','out']) fs.rmSync(d,{ recursive: true, force: true });\"",
     "compile": "npm run clean && node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
-    "package:vsix": "npm run compile && vsce package --allow-missing-repository --skip-license",
+    "package:vsix": "npm run compile && vsce package",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
