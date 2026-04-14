@@ -6,7 +6,7 @@ import {
   createConnectionStatusIndicator,
   type ConnectionStatusIndicatorVscodeApi,
 } from "../../../src/ui/connection-status-indicator";
-import type { Localize } from "../../../src/config/endpoint-config";
+import { createLocalizeMock } from "../test-utils/localize-mock";
 
 type StatusBarMock = ConnectionStatusBarItemLike & {
   showCalls: number;
@@ -38,53 +38,7 @@ function createVscodeMock(config: { host: string; port: number }): {
     },
   };
 
-  const localizeMock: Localize = (
-    messageOrOptions: unknown,
-    ...args: unknown[]
-  ): string => {
-    if (typeof messageOrOptions === "string") {
-      if (
-        args.length === 1 &&
-        typeof args[0] === "object" &&
-        args[0] !== null
-      ) {
-        const named = args[0] as Record<string, string | number | boolean>;
-        let rendered = messageOrOptions;
-        for (const [key, value] of Object.entries(named)) {
-          rendered = rendered.replace(`{${key}}`, String(value));
-        }
-        return rendered;
-      }
-
-      let rendered = messageOrOptions;
-      for (const [index, value] of args.entries()) {
-        rendered = rendered.replace(`{${index}}`, String(value));
-      }
-      return rendered;
-    }
-
-    const opts = messageOrOptions as {
-      message: string;
-      args?:
-        | (string | number | boolean)[]
-        | Record<string, string | number | boolean>;
-    };
-    let rendered = opts.message;
-    if (Array.isArray(opts.args)) {
-      for (const [index, value] of opts.args.entries()) {
-        rendered = rendered.replace(`{${index}}`, String(value));
-      }
-      return rendered;
-    }
-
-    if (opts.args && typeof opts.args === "object") {
-      for (const [key, value] of Object.entries(opts.args)) {
-        rendered = rendered.replace(`{${key}}`, String(value));
-      }
-    }
-
-    return rendered;
-  };
+  const localizeMock = createLocalizeMock();
 
   const vscodeMock: ConnectionStatusIndicatorVscodeApi = {
     l10n: {
