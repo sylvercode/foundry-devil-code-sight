@@ -50,6 +50,7 @@ development_status:
   1-4-disconnect-and-manual-reconnect-lifecycle: done
   1-5-preserve-devtools-coexistence: done
   1-6-surface-connection-state-and-recovery-actions: done
+  1-7-automate-vsix-release-via-ci: ready-for-dev
   epic-1-retrospective: optional
 
   # ── Epic 2: Execute JavaScript Cells (No Intentional Capture) ─────────────
