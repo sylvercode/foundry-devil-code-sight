@@ -77,6 +77,7 @@ export function createConnectionStatusIndicator(
     100,
   );
   statusBarItem.name = "Jupyter Browser Kernel Connection Status";
+  let currentState: ConnectionState = "disconnected";
   let currentErrorContext: ConnectionErrorContext | undefined;
 
   const endpointSummary = (): string => {
@@ -123,6 +124,7 @@ export function createConnectionStatusIndicator(
   };
 
   const setState = (state: ConnectionState): void => {
+    currentState = state;
     const label = localizedLabel(state, localize);
     statusBarItem.text = `Jupyter Browser: ${label}`;
     statusBarItem.command =
@@ -143,6 +145,9 @@ export function createConnectionStatusIndicator(
     context: ConnectionErrorContext | undefined,
   ): void => {
     currentErrorContext = context;
+    if (currentState === "error") {
+      statusBarItem.tooltip = tooltipForState("error");
+    }
   };
 
   setState("disconnected");

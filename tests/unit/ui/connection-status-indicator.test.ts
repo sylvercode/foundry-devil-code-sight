@@ -232,3 +232,27 @@ test("status indicator uses error context when set and falls back to generic gui
 
   indicator.dispose();
 });
+
+test("status indicator refreshes error tooltip when error context changes while already in error state", () => {
+  const { vscodeMock, statusBarItem } = createVscodeMock({
+    host: "localhost",
+    port: 9222,
+  });
+  const indicator = createConnectionStatusIndicator(vscodeMock);
+
+  indicator.setState("error");
+  assert.match(
+    tooltipText(statusBarItem),
+    /Run Reconnect command or check settings/,
+  );
+
+  indicator.setErrorContext({
+    category: "endpoint-connectivity",
+    guidance: "Confirm browser remote debugging port and retry reconnect.",
+  });
+
+  assert.match(tooltipText(statusBarItem), /endpoint-connectivity/);
+  assert.match(tooltipText(statusBarItem), /retry reconnect/);
+
+  indicator.dispose();
+});

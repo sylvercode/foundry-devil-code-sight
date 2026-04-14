@@ -2,7 +2,7 @@
 storyId: "1.6"
 storyKey: "1-6-surface-connection-state-and-recovery-actions"
 title: "Surface Connection State and Recovery Actions"
-status: "review"
+status: "done"
 created: "2026-04-12"
 epic: "1"
 priority: "p0"
@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 1.6: Surface Connection State and Recovery Actions
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -61,7 +61,8 @@ So that I always know readiness and the next action.
 
 - [x] Update `src/ui/connection-status-indicator.ts` to accept a `command` on the status bar item.
   - [x] Set `statusBarItem.command` to `jupyterBrowserKernel.reconnect` when state is `disconnected` or `error`.
-  - [x] Clear `statusBarItem.command` (set to `undefined`) when state is `connecting` or `connected`.
+  - [x] Set `statusBarItem.command` to `jupyterBrowserKernel.disconnect` when state is `connected`.
+  - [x] Clear `statusBarItem.command` (set to `undefined`) when state is `connecting`.
 - [x] Add state-aware tooltips with recovery guidance.
   - [x] `disconnected`: Tooltip shows "Click to reconnect" (or "Run Reconnect command") plus current endpoint summary.
   - [x] `connecting`: Tooltip shows "Connection attempt in progress…".
@@ -148,6 +149,15 @@ So that I always know readiness and the next action.
   - [x] Tooltip shows state-appropriate recovery guidance.
   - [x] Output channel logs state transitions with timestamps.
   - [x] All actions accessible via Command Palette (keyboard-only).
+
+### Review Findings
+
+- [x] [Review][Decision] Connected state assigns disconnect command — accepted as improvement. Spec updated to reflect `disconnect` command on `connected` state. [src/ui/connection-status-indicator.ts:136]
+- [x] [Review][Patch] Duplicate `formatConnectFailureMessage` call — called twice with identical args in failure path; compute once and reuse [src/commands/connect-command.ts:117-126]
+- [x] [Review][Patch] Redundant `setState("error")` re-trigger in `onErrorContextChanged` — causes duplicate tooltip/background recomputation and double log line when error context changes while already in error state [src/extension.ts:62-65]
+- [x] [Review][Patch] Logger emits duplicate error log line — `onErrorContextChanged` emits its own error line AND re-triggers `onConnectionStateChanged` via the `setState("error")` call, producing two log entries for one event [src/extension.ts:62-66, src/logging/connection-logger.ts:28-35]
+- [x] [Review][Defer] Timestamp logging uses time-only format — `toLocaleTimeString` loses date; multi-day sessions have ambiguous log entries. Pre-existing pattern, not blocking. [src/logging/connection-state-log.ts:6-8] — deferred, pre-existing
+- [x] [Review][Defer] Repeated endpoint config reads on every tooltip/log — `endpointSummary()` re-reads workspace config each invocation. Harmless at current frequency. [src/ui/connection-status-indicator.ts:82-88] — deferred, pre-existing
 
 ## Dev Notes
 

@@ -55,9 +55,6 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     onErrorContextChanged: (context) => {
       statusIndicator.setErrorContext(context);
-      if (connectionStateStore.getState() === "error") {
-        statusIndicator.setState("error");
-      }
       logger.onErrorContextChanged(context);
     },
   });

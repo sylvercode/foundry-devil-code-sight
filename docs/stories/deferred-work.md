@@ -16,3 +16,8 @@
 ## Deferred from: code review of 1-4-disconnect-and-manual-reconnect-lifecycle (2026-04-11)
 
 - No explicit 5-second timeout wrapper for reconnect (NFR2/NFR4). AC 2 requires "reports success or failure within 5 seconds." Implementation relies on CDP library default timeouts. No `Promise.race` timeout guard. CDP defaults are reasonable for MVP.
+
+## Deferred from: code review of 1-6-surface-connection-state-and-recovery-actions (2026-04-13)
+
+- Timestamp logging uses time-only format (`toLocaleTimeString`) — multi-day sessions produce ambiguous log entries without date context. Pre-existing pattern.
+- `endpointSummary()` re-reads workspace configuration on every tooltip render and log line. Harmless at current event frequency but would be wasteful under rapid state changes. Pre-existing pattern.
