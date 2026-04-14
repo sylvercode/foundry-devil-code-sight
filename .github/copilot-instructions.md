@@ -70,6 +70,13 @@ These are currently the most important planning constraints to preserve:
 - Keep docs and planning artifacts aligned when code changes materially affect user workflows or architecture.
 - If you need architectural detail that the PRD does not settle, call that out explicitly instead of guessing.
 
+## Coding Standards For Agents
+
+- Do not hardcode user-facing strings in source files. Route user-visible text through localization (`vscode.l10n.t(...)`) and keep message keys/content in localization resources.
+- Do not define complex ad hoc object types directly in function signatures. Prefer named type aliases or interfaces for non-trivial shapes.
+- Do not duplicate library-owned types in local code. Reuse source types directly; when a narrowed shape is needed, bind to the source type with utilities such as `Pick`, `Partial`, and indexed access types.
+- Prefer single-assignment `const` initialization over `let` followed by mutation. If initialization requires multiple steps, prefer a small inline IIFE that still returns a `const` value.
+
 ## Build And Dev Commands
 
 ```bash
