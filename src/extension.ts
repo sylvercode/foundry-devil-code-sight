@@ -20,6 +20,7 @@ import {
   createConnectionStateStore,
 } from "./transport/connection-state";
 import { createConnectionLogger } from "./logging/connection-logger";
+import { createKernelTransportFailureReporter } from "./logging/kernel-transport-failure-reporter";
 import { createConnectionStatusIndicator } from "./ui/connection-status-indicator";
 import { disconnectActiveBrowserConnection } from "./transport/browser-connect";
 import { registerKernelController } from "./notebook";
@@ -91,7 +92,19 @@ export function activate(context: vscode.ExtensionContext): void {
     callback: executeReconnectCommand,
   });
 
-  const kernelController = registerKernelController(vscode);
+  const reportKernelTransportFailure = createKernelTransportFailureReporter({
+    connectionStateStore,
+    disconnectActiveConnection: disconnectActiveBrowserConnection,
+    outputChannel,
+    localize: vscode.l10n.t,
+    showErrorMessage: async (message) => {
+      await vscode.window.showErrorMessage(message);
+    },
+  });
+
+  const kernelController = registerKernelController(vscode, {
+    onTransportError: reportKernelTransportFailure,
+  });
   context.subscriptions.push(kernelController);
 }
 

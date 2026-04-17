@@ -34,6 +34,11 @@ So that I can validate browser state and behavior directly from notebook cells.
 **Then** the error message and type are shown inline
 **And** no uncaught exception leaks to the extension host.
 
+**Given** a transport-level execution failure
+**When** the failure is handled
+**Then** the user receives a notification and output-channel log entry with reconnect guidance
+**And** inline notebook output stays concise without rendering a call stack.
+
 ### AC 3: No Active Session Blocks Execution with Reconnect Prompt
 
 **Given** no active session
@@ -126,7 +131,8 @@ So that I can validate browser state and behavior directly from notebook cells.
   - For `undefined` return values, show a localized `"undefined"` text output.
   - Call `execution.end(true, Date.now())`.
 - [x] For `ExecutionFailure`:
-  - Use `NotebookCellOutputItem.error()` with an `Error` object constructed from the normalized failure (name, message, stack).
+  - Use `NotebookCellOutputItem.error()` with an `Error` object constructed from normalized code failures (`syntax-error`, `runtime-error`) so call stack remains available for code debugging.
+  - For `transport-error`, send notification + output-channel diagnostics and render concise inline text that points to reconnect and output log surfaces.
   - Call `execution.end(false, Date.now())`.
 - [x] For no-session:
   - Use `NotebookCellOutputItem.error()` with a localized reconnect prompt message.
@@ -299,7 +305,7 @@ Maintain a module-scoped counter for `execution.executionOrder`. Increment on ea
 - Do NOT implement intentional output helpers (`$f.out()`, `$f.log()`) — that is Epic 3.
 - Do NOT add automatic reconnect on session loss during execution — manual reconnect is MVP scope. [Source: docs/prd.md#Technical-Constraints]
 - Do NOT import `chrome-remote-interface` in kernel or notebook layers. [Source: docs/architecture.md#Architectural-Boundaries]
-- Do NOT introduce a separate error notification channel for notebook failures — the cell output IS the notification surface. [Source: docs/ux-spec/06-detailed-core-user-experience.md#Experience-Mechanics]
+- Do NOT introduce a separate error notification channel for code execution failures (`syntax-error`, `runtime-error`) — those remain notebook-inline to preserve debug flow.
 - Do NOT define ad hoc inline types for CDP response shapes in function signatures — create named interfaces. [Source: .github/copilot-instructions.md#Coding-Standards]
 - Do NOT modify connection/disconnect/reconnect commands — those are stable from Epic 1.
 - Do NOT change activation events — `onCommand:jupyterBrowserKernel.connect` remains the sole activation trigger unless notebook activation requires it (see Implementation Note below).

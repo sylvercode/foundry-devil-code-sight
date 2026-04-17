@@ -126,7 +126,7 @@ test("executeCell evaluates expression and writes success output", async () => {
     runtime,
   });
 
-  assert.deepEqual(evaluateCalls, ["2 + 2"]);
+  assert.deepEqual(evaluateCalls, ["2 + 2\n//# sourceURL=cell.js"]);
   assert.equal(notebookExecution.executionOrder, 7);
   assert.equal(execution.success, true);
   assert.equal(execution.outputs.length, 1);
@@ -181,6 +181,7 @@ test("executeCell writes structured error output for runtime exception", async (
 
 test("executeCell reports reconnect prompt when no active session", async () => {
   const { execution, notebookExecution } = createExecutionRecorder();
+  const reportedFailures: { kind: string; message: string }[] = [];
 
   const runtime = createKernelRuntime(
     {
@@ -189,6 +190,9 @@ test("executeCell reports reconnect prompt when no active session", async () => 
     },
     createLocalizeMock(),
     () => undefined,
+    (failure) => {
+      reportedFailures.push({ kind: failure.kind, message: failure.message });
+    },
   );
 
   await executeCell({
@@ -201,10 +205,102 @@ test("executeCell reports reconnect prompt when no active session", async () => 
   });
 
   assert.equal(execution.success, false);
-  assert.equal(execution.outputs[0]?.items[0]?.kind, "error");
+  assert.deepEqual(reportedFailures, [
+    {
+      kind: "no-session",
+      message:
+        "No active browser session. Run Jupyter Browser Kernel: Reconnect and try again.",
+    },
+  ]);
+  assert.equal(execution.outputs.length, 0);
+});
 
-  const renderedError = execution.outputs[0]?.items[0]?.value;
-  assert.ok(renderedError instanceof Error);
-  assert.match(renderedError.message, /No active browser session/);
-  assert.match(renderedError.message, /Reconnect/);
+test("executeCell reports transport failures to callback and avoids stack-style cell output", async () => {
+  const transportError = new Error("Session closed unexpectedly");
+  transportError.name = "TargetClosedError";
+
+  const connection = createFakeConnection(async () => {
+    throw transportError;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  const reportedFailures: { kind: string; message: string }[] = [];
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+    (failure) => {
+      reportedFailures.push({ kind: failure.kind, message: failure.message });
+    },
+  );
+
+  await executeCell({
+    cell: createFakeCell("2 + 2") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 3,
+    runtime,
+  });
+
+  assert.equal(execution.success, false);
+  assert.deepEqual(reportedFailures, [
+    {
+      kind: "transport-error",
+      message: "Session closed unexpectedly",
+    },
+  ]);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+  assert.match(
+    String(execution.outputs[0]?.items[0]?.value),
+    /Transport error while running this cell/,
+  );
+});
+
+test("executeCell ends even while transport error reporting is still pending", async () => {
+  const transportError = new Error("Session closed unexpectedly");
+  transportError.name = "TargetClosedError";
+
+  const connection = createFakeConnection(async () => {
+    throw transportError;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  let resolveReporter: (() => void) | undefined;
+  const reporterStarted = new Promise<void>((resolve) => {
+    resolveReporter = resolve;
+  });
+  let reportedFailureKind: string | undefined;
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+    async (failure) => {
+      reportedFailureKind = failure.kind;
+      await reporterStarted;
+    },
+  );
+
+  await executeCell({
+    cell: createFakeCell("2 + 2") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 4,
+    runtime,
+  });
+
+  assert.equal(reportedFailureKind, "transport-error");
+  assert.equal(execution.success, false);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+
+  resolveReporter?.();
 });

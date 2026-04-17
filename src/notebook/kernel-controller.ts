@@ -1,6 +1,10 @@
 import type * as vscode from "vscode";
 import type { Localize } from "../config/endpoint-config";
-import { executeCell, createKernelRuntime } from "../kernel";
+import {
+  executeCell,
+  createKernelRuntime,
+  type ExecutionFailure,
+} from "../kernel";
 
 let executionOrder = 0;
 
@@ -18,8 +22,15 @@ export interface KernelControllerApi extends NotebookApi {
   l10n: LocalizationApi;
 }
 
+export interface KernelControllerOptions {
+  onTransportError?:
+    | ((failure: ExecutionFailure) => Promise<void>)
+    | ((failure: ExecutionFailure) => void);
+}
+
 export function registerKernelController(
   api: KernelControllerApi,
+  options?: KernelControllerOptions,
 ): vscode.NotebookController {
   const controller = api.notebooks.createNotebookController(
     "jupyter-browser-kernel",
@@ -35,6 +46,8 @@ export function registerKernelController(
       NotebookCellOutputItem: api.NotebookCellOutputItem,
     },
     api.l10n.t,
+    undefined,
+    options?.onTransportError,
   );
 
   controller.executeHandler = async (cells, _notebook, executionController) => {

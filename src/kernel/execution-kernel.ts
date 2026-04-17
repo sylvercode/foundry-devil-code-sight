@@ -10,6 +10,10 @@ import {
   type ExecutionFailure,
   type ExecutionResult,
 } from "./execution-result";
+import {
+  getKernelFailureCellOutputMessage,
+  getNoActiveSessionMessage,
+} from "./execution-messages";
 
 export interface NotebookOutputApi {
   NotebookCellOutput: typeof vscode.NotebookCellOutput;
@@ -20,6 +24,7 @@ export interface KernelRuntime {
   notebookOutputApi: NotebookOutputApi;
   localize: Localize;
   getActiveConnection: () => ActiveBrowserConnection | undefined;
+  reportTransportError?: (failure: ExecutionFailure) => Promise<void> | void;
 }
 
 export interface ExecuteCellRequest {
@@ -35,11 +40,13 @@ export function createKernelRuntime(
   getActiveConnection: () =>
     | ActiveBrowserConnection
     | undefined = getActiveBrowserConnection,
+  reportTransportError?: (failure: ExecutionFailure) => Promise<void> | void,
 ): KernelRuntime {
   return {
     notebookOutputApi,
     localize,
     getActiveConnection,
+    reportTransportError,
   };
 }
 
@@ -56,11 +63,8 @@ export async function executeCell({
   const connection = runtime.getActiveConnection();
   if (!connection) {
     const noSessionFailure = createNoSessionFailure(runtime.localize);
-    await writeFailureOutput(
-      execution,
-      noSessionFailure,
-      runtime.notebookOutputApi,
-    );
+    reportFailureAsync(runtime, noSessionFailure);
+    await clearCellOutput(execution);
     execution.end(false, Date.now());
     return;
   }
@@ -81,7 +85,16 @@ export async function executeCell({
     return;
   }
 
-  await writeFailureOutput(execution, result, runtime.notebookOutputApi);
+  if (shouldReportFailure(result)) {
+    reportFailureAsync(runtime, result);
+  }
+
+  await writeFailureOutput(
+    execution,
+    result,
+    runtime.notebookOutputApi,
+    runtime.localize,
+  );
   execution.end(false, Date.now());
 }
 
@@ -90,10 +103,25 @@ function createNoSessionFailure(localize: Localize): ExecutionFailure {
     ok: false,
     name: "NoActiveSessionError",
     kind: "no-session",
-    message: localize(
-      "No active browser session. Run Jupyter Browser Kernel: Reconnect and try again.",
-    ),
+    message: getNoActiveSessionMessage(localize),
   };
+}
+
+function shouldReportFailure(failure: ExecutionFailure): boolean {
+  return failure.kind === "transport-error" || failure.kind === "no-session";
+}
+
+function reportFailureAsync(
+  runtime: KernelRuntime,
+  failure: ExecutionFailure,
+): void {
+  const reportPromise = runtime.reportTransportError?.(failure);
+
+  if (!reportPromise) {
+    return;
+  }
+
+  void Promise.resolve(reportPromise).catch(() => undefined);
 }
 
 async function evaluateCellExpression(
@@ -101,11 +129,20 @@ async function evaluateCellExpression(
   expression: string,
 ): Promise<ExecutionResult> {
   try {
-    const rawResponse = await connection.evaluate(expression);
+    const expressionWithLabel = addSourceLabeling(expression);
+    const rawResponse = await connection.evaluate(expressionWithLabel);
     return normalizeEvaluationResult(rawResponse);
   } catch (error) {
     return normalizeTransportError(error);
   }
+}
+
+function addSourceLabeling(expression: string): string {
+  // Adding a sourceURL label to the expression allows browser devtools to
+  // associate the evaluated code with a "file",
+  // which can improve debugging and error stack traces.
+  const sourceLabel = `//# sourceURL=cell.js`;
+  return `${expression}\n${sourceLabel}`;
 }
 
 async function writeSuccessOutput(
@@ -120,11 +157,29 @@ async function writeSuccessOutput(
   ]);
 }
 
+async function clearCellOutput(
+  execution: vscode.NotebookCellExecution,
+): Promise<void> {
+  await execution.replaceOutput([]);
+}
+
 async function writeFailureOutput(
   execution: vscode.NotebookCellExecution,
   failure: ExecutionFailure,
   notebookOutputApi: NotebookOutputApi,
+  localize: Localize,
 ): Promise<void> {
+  if (failure.kind === "transport-error" || failure.kind === "no-session") {
+    const message = getKernelFailureCellOutputMessage(localize, failure.kind);
+
+    await execution.replaceOutput([
+      new notebookOutputApi.NotebookCellOutput([
+        notebookOutputApi.NotebookCellOutputItem.text(message, "text/plain"),
+      ]),
+    ]);
+    return;
+  }
+
   const error = toErrorObject(failure);
 
   await execution.replaceOutput([
