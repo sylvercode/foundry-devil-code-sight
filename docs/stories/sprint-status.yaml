@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-04-14
+last_updated: 2026-04-16T00:00:00.000Z
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -54,8 +54,8 @@ development_status:
   epic-1-retrospective: done
 
   # ── Epic 2: Execute JavaScript Cells (No Intentional Capture) ─────────────
-  epic-2: backlog
-  2-1-run-synchronous-javascript-cells: backlog
+  epic-2: in-progress
+  2-1-run-synchronous-javascript-cells: done
   2-2-run-asynchronous-javascript-cells: backlog
   2-3-normalize-success-and-failure-output-contracts: backlog
   2-4-support-fast-rerun-and-iteration-patterns: backlog

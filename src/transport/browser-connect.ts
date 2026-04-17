@@ -1,6 +1,7 @@
 import os from "node:os";
 import { isIP } from "node:net";
 import CDP from "chrome-remote-interface";
+import type ProtocolMappingApi from "devtools-protocol/types/protocol-mapping";
 
 import type { EndpointConfig, Localize } from "../config/endpoint-config";
 import {
@@ -11,10 +12,14 @@ import {
 } from "../profile/target-profile";
 import type { ConnectToTargetResult } from "./connect-types";
 
+export type BrowserRuntimeEvaluateResult =
+  ProtocolMappingApi.Commands["Runtime.evaluate"]["returnType"];
+
 export interface ActiveBrowserConnection {
   targetId: string;
   sessionId: string;
   endpoint: EndpointConfig;
+  evaluate: (expression: string) => Promise<BrowserRuntimeEvaluateResult>;
   close: () => Promise<void>;
 }
 
@@ -367,10 +372,22 @@ async function connectViaBrowserTargetAttach(
     await clearActiveBrowserConnection();
 
     const retainedClient = client;
+    const retainedSessionId = attachResult.sessionId;
     activeBrowserConnection = {
       targetId: targetSelection.target.targetId,
-      sessionId: attachResult.sessionId,
+      sessionId: retainedSessionId,
       endpoint,
+      evaluate: async (expression: string) =>
+        retainedClient.send(
+          "Runtime.evaluate",
+          {
+            expression,
+            returnByValue: true,
+            awaitPromise: false,
+            generatePreview: false,
+          },
+          retainedSessionId,
+        ),
       close: async () => {
         await safeClose(retainedClient);
       },
