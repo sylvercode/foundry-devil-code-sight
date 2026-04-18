@@ -8,6 +8,7 @@ import {
   normalizeEvaluationResult,
   normalizeTransportError,
   type ExecutionFailure,
+  type ExecutionFailureKind,
   type ExecutionResult,
 } from "./execution-result";
 import {
@@ -120,8 +121,14 @@ function createNoSessionFailure(localize: Localize): ExecutionFailure {
   };
 }
 
+function isInfrastructureFailure(kind: ExecutionFailureKind): boolean {
+  return (
+    kind === "transport-error" || kind === "no-session" || kind === "timeout"
+  );
+}
+
 function shouldReportFailure(failure: ExecutionFailure): boolean {
-  return failure.kind === "transport-error" || failure.kind === "no-session";
+  return isInfrastructureFailure(failure.kind);
 }
 
 function reportFailureAsync(
@@ -181,7 +188,7 @@ async function writeFailureOutput(
   notebookOutputApi: NotebookOutputApi,
   localize: Localize,
 ): Promise<void> {
-  if (failure.kind === "transport-error" || failure.kind === "no-session") {
+  if (isInfrastructureFailure(failure.kind)) {
     const message = getKernelFailureCellOutputMessage(localize, failure.kind);
 
     await execution.replaceOutput([

@@ -1,4 +1,6 @@
 import os from "node:os";
+
+const CDP_EVALUATION_TIMEOUT_MS = 30_000;
 import { isIP } from "node:net";
 import CDP from "chrome-remote-interface";
 import type ProtocolMappingApi from "devtools-protocol/types/protocol-mapping";
@@ -383,7 +385,8 @@ async function connectViaBrowserTargetAttach(
           {
             expression,
             returnByValue: true,
-            awaitPromise: false,
+            awaitPromise: true,
+            timeout: CDP_EVALUATION_TIMEOUT_MS,
             generatePreview: false,
           },
           retainedSessionId,

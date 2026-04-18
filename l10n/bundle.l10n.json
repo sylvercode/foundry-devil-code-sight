@@ -21,5 +21,8 @@
   "Browser transport error while running a cell. Run Reconnect and try again.": "Browser transport error while running a cell. Run Reconnect and try again.",
   "session unavailable": "session unavailable",
   "transport error": "transport error",
+  "evaluation timeout": "evaluation timeout",
+  "Cell execution timed out. The async operation did not complete within the allowed time. Simplify the expression or check for unresolved Promises.": "Cell execution timed out. The async operation did not complete within the allowed time. Simplify the expression or check for unresolved Promises.",
+  "Cell execution timed out. Check for unresolved Promises and try again.": "Cell execution timed out. Check for unresolved Promises and try again.",
   "[{0}] Notebook {1} ({2}): {3}": "[{0}] Notebook {1} ({2}): {3}"
 }

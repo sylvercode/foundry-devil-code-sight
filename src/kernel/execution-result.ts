@@ -10,7 +10,9 @@ export type ExecutionFailureKind =
   | "syntax-error"
   | "runtime-error"
   | "transport-error"
-  | "no-session";
+  | "no-session"
+  | "promise-rejection"
+  | "timeout";
 
 export interface ExecutionFailure {
   ok: false;
@@ -57,6 +59,19 @@ interface RemoteObjectLike {
   subtype?: string;
   value?: unknown;
   description?: string;
+}
+
+interface ExceptionClassification {
+  name: string;
+  message: string;
+  kind: ExecutionFailureKind;
+}
+
+interface ExceptionClassificationInput {
+  exceptionText: string | undefined;
+  exceptionClassName: string | undefined;
+  rawText: string | undefined;
+  description: string | undefined;
 }
 
 function serializeRemoteValue(result: RemoteObjectLike): string {
@@ -112,22 +127,12 @@ function normalizeExceptionDetails(
   const stackFromDescription = extractStackFromDescription(description);
   const stackFromFrames = stackTraceToText(exceptionDetails.stackTrace);
 
-  const name =
-    exceptionClassName ??
-    parseErrorName(rawText) ??
-    parseErrorName(description) ??
-    "RuntimeError";
-
-  const message =
-    parseErrorMessage(description, name) ??
-    parseErrorMessage(rawText, name) ??
-    rawText ??
-    "Evaluation failed.";
-
-  const kind =
-    exceptionClassName === "SyntaxError" || name === "SyntaxError"
-      ? "syntax-error"
-      : "runtime-error";
+  const { name, message, kind } = classifyExceptionFailure({
+    exceptionText: exceptionDetails.text,
+    exceptionClassName,
+    rawText,
+    description,
+  });
 
   return {
     ok: false,
@@ -138,6 +143,54 @@ function normalizeExceptionDetails(
   };
 }
 
+function classifyExceptionFailure({
+  exceptionText,
+  exceptionClassName,
+  rawText,
+  description,
+}: ExceptionClassificationInput): ExceptionClassification {
+  const isTimeout = exceptionText?.toLowerCase().includes("timed out") ?? false;
+  const isPromiseRejection = exceptionText?.includes("(in promise)") ?? false;
+
+  const parsedName =
+    exceptionClassName ??
+    parseErrorName(rawText) ??
+    parseErrorName(description) ??
+    "RuntimeError";
+
+  const kind: ExecutionFailureKind = (() => {
+    switch (true) {
+      case isTimeout:
+        return "timeout";
+      case exceptionClassName === "SyntaxError" || parsedName === "SyntaxError":
+        return "syntax-error";
+      case isPromiseRejection:
+        return "promise-rejection";
+      default:
+        return "runtime-error";
+    }
+  })();
+
+  switch (kind) {
+    case "timeout":
+      return {
+        name: "EvaluationTimeout",
+        message: "Evaluation timed out.",
+        kind,
+      };
+    default:
+      return {
+        name: parsedName,
+        message:
+          parseErrorMessage(description, parsedName) ??
+          parseErrorMessage(rawText, parsedName) ??
+          rawText ??
+          "Evaluation failed.",
+        kind,
+      };
+  }
+}
+
 function sanitizeUncaughtPrefix(
   rawText: string | undefined,
 ): string | undefined {
@@ -145,7 +198,7 @@ function sanitizeUncaughtPrefix(
     return undefined;
   }
 
-  return rawText.replace(/^Uncaught\s+/, "").trim();
+  return rawText.replace(/^Uncaught\s+(?:\(in promise\)\s+)?/, "").trim();
 }
 
 function parseErrorName(input: string | undefined): string | undefined {

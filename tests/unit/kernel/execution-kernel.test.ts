@@ -313,3 +313,121 @@ test("executeCell ends even while transport error reporting is still pending", a
 
   resolveReporter?.();
 });
+
+test("executeCell writes structured error output for promise rejection", async () => {
+  const connection = createFakeConnection(async () => {
+    return {
+      result: { type: "undefined" },
+      exceptionDetails: {
+        text: "Uncaught (in promise) TypeError: async boom",
+        exception: {
+          className: "TypeError",
+          description: "TypeError: async boom\n    at <anonymous>:1:1",
+        },
+      },
+    } as never;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  await executeCell({
+    cell: createFakeCell(
+      "Promise.reject(new TypeError('async boom'))",
+    ) as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 1,
+    runtime,
+  });
+
+  assert.equal(execution.success, false);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "error");
+
+  const renderedError = execution.outputs[0]?.items[0]?.value;
+  assert.ok(renderedError instanceof Error);
+  assert.equal(renderedError.name, "TypeError");
+  assert.equal(renderedError.message, "async boom");
+});
+
+test("executeCell writes text output and reports failure for timeout", async () => {
+  const connection = createFakeConnection(async () => {
+    return {
+      result: { type: "undefined" },
+      exceptionDetails: {
+        text: "Script execution timed out.",
+        lineNumber: 0,
+        columnNumber: 0,
+      },
+    } as never;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  const reportedFailures: string[] = [];
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+    (failure) => {
+      reportedFailures.push(failure.kind);
+    },
+  );
+
+  await executeCell({
+    cell: createFakeCell("new Promise(() => {})") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 1,
+    runtime,
+  });
+
+  assert.equal(execution.success, false);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+  assert.deepEqual(reportedFailures, ["timeout"]);
+});
+
+test("executeCell still produces success output for resolved async value (regression)", async () => {
+  const connection = createFakeConnection(async () => {
+    return {
+      result: { type: "number", value: 42 },
+    } as never;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  await executeCell({
+    cell: createFakeCell("Promise.resolve(42)") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 1,
+    runtime,
+  });
+
+  assert.equal(execution.success, true);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+  assert.equal(execution.outputs[0]?.items[0]?.value, "42");
+});

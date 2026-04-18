@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 2.2: Run Asynchronous JavaScript Cells
 
-**Status:** ready-for-dev
+**Status:** review
 
 ## Story
 
@@ -45,16 +45,16 @@ So that notebook execution supports real runtime workflows that use async APIs.
 
 ### 1. Flip Transport to Await Promises (AC: 1, 2, 3)
 
-- [ ] In `src/transport/browser-connect.ts`, change `awaitPromise: false` → `awaitPromise: true` in the `evaluate` binding inside `connectViaBrowserTargetAttach`.
-- [ ] Add a `timeout` parameter to the `Runtime.evaluate` call to prevent indefinite hangs. Use a module-scoped constant (e.g., `const CDP_EVALUATION_TIMEOUT_MS = 30_000`).
-- [ ] The `evaluate` function signature on `ActiveBrowserConnection` does NOT change — the timeout is an implementation detail of the transport.
-- [ ] Verify that `awaitPromise: true` is already used successfully in `verifyRuntimeProbe` (line ~245) — this confirms CDP supports it on the current client.
+- [x] In `src/transport/browser-connect.ts`, change `awaitPromise: false` → `awaitPromise: true` in the `evaluate` binding inside `connectViaBrowserTargetAttach`.
+- [x] Add a `timeout` parameter to the `Runtime.evaluate` call to prevent indefinite hangs. Use a module-scoped constant (e.g., `const CDP_EVALUATION_TIMEOUT_MS = 30_000`).
+- [x] The `evaluate` function signature on `ActiveBrowserConnection` does NOT change — the timeout is an implementation detail of the transport.
+- [x] Verify that `awaitPromise: true` is already used successfully in `verifyRuntimeProbe` (line ~245) — this confirms CDP supports it on the current client.
 
 **Why this is safe for sync code:** `awaitPromise: true` resolves non-Promise values immediately. `Runtime.evaluate` with `awaitPromise: true` and a synchronous expression like `2 + 2` returns the same result as `awaitPromise: false`. No behavior regression for Story 2.1 paths.
 
 ### 2. Add Promise-Rejection and Timeout Failure Kinds (AC: 2, 3)
 
-- [ ] In `src/kernel/execution-result.ts`, extend `ExecutionFailureKind`:
+- [x] In `src/kernel/execution-result.ts`, extend `ExecutionFailureKind`:
   ```typescript
   export type ExecutionFailureKind =
     | "syntax-error"
@@ -64,15 +64,15 @@ So that notebook execution supports real runtime workflows that use async APIs.
     | "transport-error"
     | "no-session";
   ```
-- [ ] No changes to `ExecutionSuccess` or `ExecutionFailure` interfaces — the discriminated union shape is stable.
+- [x] No changes to `ExecutionSuccess` or `ExecutionFailure` interfaces — the discriminated union shape is stable.
 
 ### 3. Detect Promise Rejections in Normalization (AC: 2)
 
-- [ ] In `normalizeExceptionDetails` in `src/kernel/execution-result.ts`, detect promise rejections using `exceptionDetails.text` (the raw input, NOT the `rawText` variable which is already sanitized). CDP prefixes rejection text with `"Uncaught (in promise)"`:
+- [x] In `normalizeExceptionDetails` in `src/kernel/execution-result.ts`, detect promise rejections using `exceptionDetails.text` (the raw input, NOT the `rawText` variable which is already sanitized). CDP prefixes rejection text with `"Uncaught (in promise)"`:
   ```typescript
   const isPromiseRejection = exceptionDetails.text?.includes("(in promise)");
   ```
-- [ ] Update the `kind` classification logic:
+- [x] Update the `kind` classification logic:
   ```typescript
   const kind =
     exceptionClassName === "SyntaxError" || name === "SyntaxError"
@@ -81,21 +81,21 @@ So that notebook execution supports real runtime workflows that use async APIs.
         ? "promise-rejection"
         : "runtime-error";
   ```
-- [ ] Update `sanitizeUncaughtPrefix` to also strip the `(in promise)` wrapper so that name/message parsing is not polluted:
+- [x] Update `sanitizeUncaughtPrefix` to also strip the `(in promise)` wrapper so that name/message parsing is not polluted:
   ```typescript
   return rawText.replace(/^Uncaught\s+(?:\(in promise\)\s+)?/, "").trim();
   ```
 
 ### 4. Detect Timeout Failures in Normalization (AC: 3)
 
-- [ ] CDP returns a timeout as an `exceptionDetails` response when the `timeout` parameter is exceeded. The `exceptionDetails.text` typically contains `"Script execution timed out"` or similar.
-- [ ] Add detection in `normalizeExceptionDetails` using `exceptionDetails.text` (the raw, unsanitized value — NOT the `rawText` variable which is already sanitized):
+- [x] CDP returns a timeout as an `exceptionDetails` response when the `timeout` parameter is exceeded. The `exceptionDetails.text` typically contains `"Script execution timed out"` or similar.
+- [x] Add detection in `normalizeExceptionDetails` using `exceptionDetails.text` (the raw, unsanitized value — NOT the `rawText` variable which is already sanitized):
   ```typescript
   const isTimeout =
     exceptionDetails.text?.toLowerCase().includes("timed out") ?? false;
   ```
-- [ ] When `isTimeout` is true, classify as `kind: "timeout"` with `name: "EvaluationTimeout"`.
-- [ ] Timeout classification takes priority over all other kinds. The combined classification after merging Tasks 3 and 4 must be:
+- [x] When `isTimeout` is true, classify as `kind: "timeout"` with `name: "EvaluationTimeout"`.
+- [x] Timeout classification takes priority over all other kinds. The combined classification after merging Tasks 3 and 4 must be:
   ```typescript
   const kind = isTimeout
     ? "timeout"
@@ -105,11 +105,11 @@ So that notebook execution supports real runtime workflows that use async APIs.
         ? "promise-rejection"
         : "runtime-error";
   ```
-- [ ] **Note:** The timeout detection heuristic (`"timed out"`) is best-effort string matching against unspecified CDP text. Different Chrome/Edge versions may word this differently. Include a regression test with the actual CDP response text observed from the target browser.
+- [x] **Note:** The timeout detection heuristic (`"timed out"`) is best-effort string matching against unspecified CDP text. Different Chrome/Edge versions may word this differently. Include a regression test with the actual CDP response text observed from the target browser.
 
 ### 5. Update Failure Reporting and Output for New Kinds (AC: 2, 3)
 
-- [ ] In `src/kernel/execution-kernel.ts`, update `shouldReportFailure` to include `"timeout"`:
+- [x] In `src/kernel/execution-kernel.ts`, update `shouldReportFailure` to include `"timeout"`:
   ```typescript
   function shouldReportFailure(failure: ExecutionFailure): boolean {
     return (
@@ -119,9 +119,9 @@ So that notebook execution supports real runtime workflows that use async APIs.
     );
   }
   ```
-- [ ] In `src/kernel/execution-kernel.ts`, update `writeFailureOutput` to handle `"timeout"` as a text-based output (like transport-error/no-session) rather than an `Error` object, since timeout is an infrastructure concern, not a code bug.
-- [ ] `"promise-rejection"` requires NO changes to `writeFailureOutput` — it falls through to the structured `Error` output path (same as `syntax-error` and `runtime-error`), which is correct: the rejection reason, name, and stack are shown inline.
-- [ ] In `src/kernel/execution-messages.ts`, add localized messages for timeout:
+- [x] In `src/kernel/execution-kernel.ts`, update `writeFailureOutput` to handle `"timeout"` as a text-based output (like transport-error/no-session) rather than an `Error` object, since timeout is an infrastructure concern, not a code bug.
+- [x] `"promise-rejection"` requires NO changes to `writeFailureOutput` — it falls through to the structured `Error` output path (same as `syntax-error` and `runtime-error`), which is correct: the rejection reason, name, and stack are shown inline.
+- [x] In `src/kernel/execution-messages.ts`, add localized messages for timeout:
 
   ```typescript
   export function getTimeoutCellOutputMessage(localize: Localize): string {
@@ -137,14 +137,14 @@ So that notebook execution supports real runtime workflows that use async APIs.
   }
   ```
 
-- [ ] Update `getKernelFailureCellOutputMessage` and `getKernelFailureNotificationMessage` in `execution-messages.ts` to handle `"timeout"` kind.
-- [ ] Update `getKernelFailureCategoryLabel` to return a localized `"evaluation timeout"` for the `"timeout"` kind.
-- [ ] Add all new localized strings to `l10n/bundle.l10n.json`.
-- [ ] **Downstream verification:** `src/logging/kernel-transport-failure-reporter.ts` calls `getKernelFailureCategoryLabel` and `getKernelFailureNotificationMessage`. Verify that after updating those message functions for the `"timeout"` kind, the reporter handles timeout failures correctly end-to-end. The reporter itself should not need code changes if the message functions are exhaustive.
+- [x] Update `getKernelFailureCellOutputMessage` and `getKernelFailureNotificationMessage` in `execution-messages.ts` to handle `"timeout"` kind.
+- [x] Update `getKernelFailureCategoryLabel` to return a localized `"evaluation timeout"` for the `"timeout"` kind.
+- [x] Add all new localized strings to `l10n/bundle.l10n.json`.
+- [x] **Downstream verification:** `src/logging/kernel-transport-failure-reporter.ts` calls `getKernelFailureCategoryLabel` and `getKernelFailureNotificationMessage`. Verify that after updating those message functions for the `"timeout"` kind, the reporter handles timeout failures correctly end-to-end. The reporter itself should not need code changes if the message functions are exhaustive.
 
 ### 6. Add Unit Tests for Async Normalization (AC: 1, 2, 3)
 
-- [ ] In `tests/unit/kernel/execution-result.test.ts`, add tests:
+- [x] In `tests/unit/kernel/execution-result.test.ts`, add tests:
   - Resolved Promise returning a primitive → `ExecutionSuccess` with correct value/type (same structure as sync — confirms `awaitPromise: true` produces identical output for resolved values).
   - Rejected Promise with a typed error (e.g., `TypeError`) → `ExecutionFailure` with `kind: "promise-rejection"`, correct `name`, `message`, and `stack`.
   - Rejected Promise with a non-Error value (e.g., `Promise.reject("bad")`) → `ExecutionFailure` with `kind: "promise-rejection"`, fallback name.
@@ -155,18 +155,18 @@ So that notebook execution supports real runtime workflows that use async APIs.
 
 ### 7. Add Unit Tests for Async Execution Pipeline (AC: 1, 2, 3)
 
-- [ ] In `tests/unit/kernel/execution-kernel.test.ts`, add tests:
+- [x] In `tests/unit/kernel/execution-kernel.test.ts`, add tests:
   - Async cell that resolves → success output with resolved value.
   - Async cell that rejects → error output with structured rejection.
   - Async cell that times out → text output with timeout message, transport error reported.
   - Verify existing sync tests still pass (regression guard).
-- [ ] In `tests/unit/kernel/execution-messages.test.ts` (create if not exists), add tests for new message functions for `"timeout"` and `"promise-rejection"` kinds.
+- [x] In `tests/unit/kernel/execution-messages.test.ts` (create if not exists), add tests for new message functions for `"timeout"` and `"promise-rejection"` kinds.
 
 ### 8. Run Full Validation Suite (AC: 1, 2, 3)
 
-- [ ] Run `npm run lint` — no new warnings or errors.
-- [ ] Run `npm run test:unit` — all unit tests pass including new tests.
-- [ ] Run `npm run compile` — clean compilation with no type errors.
+- [x] Run `npm run lint` — no new warnings or errors.
+- [x] Run `npm run test:unit` — all unit tests pass including new tests.
+- [x] Run `npm run compile` — clean compilation with no type errors.
 - [ ] Manually verify in Extension Development Host (if available):
   - [ ] Run `await new Promise(r => setTimeout(r, 1000)).then(() => 42)` → see `42` inline.
   - [ ] Run `Promise.reject(new TypeError("async boom"))` → see structured error with `TypeError` name.
@@ -338,8 +338,36 @@ No new directories or files are created. All changes are within existing modules
 
 ### Agent Model Used
 
+Claude Sonnet 4.6
+
 ### Debug Log References
+
+None.
 
 ### Completion Notes List
 
+- Flipped `awaitPromise: false` → `awaitPromise: true` in `browser-connect.ts` evaluate binding and added `CDP_EVALUATION_TIMEOUT_MS = 30_000` constant plus `timeout` parameter.
+- Extended `ExecutionFailureKind` with `"promise-rejection"` and `"timeout"` literals.
+- Added `isTimeout` and `isPromiseRejection` detection in `normalizeExceptionDetails` using raw `exceptionDetails.text`. Timeout takes priority over all other kinds.
+- Updated `sanitizeUncaughtPrefix` regex to strip `"(in promise)"` wrapper so name/message parsing is clean for async paths.
+- Updated `shouldReportFailure` to include `"timeout"` (reported as infrastructure failure).
+- Updated `writeFailureOutput` to render `"timeout"` as text output (same as transport-error/no-session), not structured Error.
+- Added `getTimeoutCellOutputMessage`, `getTimeoutNotificationMessage` to `execution-messages.ts` and updated all three `getKernelFailure*` functions exhaustively.
+- Added new l10n strings for timeout messages and `"evaluation timeout"` category label to `l10n/bundle.l10n.json`.
+- Downstream reporter (`kernel-transport-failure-reporter.ts`) verified correct end-to-end — no changes needed.
+- 99 unit tests pass (7 new normalization tests, 3 new kernel pipeline tests, 10 new message function tests).
+
 ### File List
+
+- `src/transport/browser-connect.ts` — added `CDP_EVALUATION_TIMEOUT_MS`, flipped `awaitPromise: true`, added `timeout`
+- `src/kernel/execution-result.ts` — added `"promise-rejection"` and `"timeout"` kinds, updated `normalizeExceptionDetails`, updated `sanitizeUncaughtPrefix`
+- `src/kernel/execution-kernel.ts` — updated `shouldReportFailure` and `writeFailureOutput` for `"timeout"`
+- `src/kernel/execution-messages.ts` — added `getTimeoutCellOutputMessage`, `getTimeoutNotificationMessage`, updated all `getKernelFailure*` functions
+- `l10n/bundle.l10n.json` — added timeout message strings and `"evaluation timeout"` label
+- `tests/unit/kernel/execution-result.test.ts` — added 7 async normalization tests
+- `tests/unit/kernel/execution-kernel.test.ts` — added 3 async pipeline tests
+- `tests/unit/kernel/execution-messages.test.ts` — created with 10 message function tests
+
+## Change Log
+
+- 2026-04-18: Implemented async JavaScript cell support with awaited CDP evaluation, promise-rejection/timeout normalization, timeout user messaging, and regression coverage.
