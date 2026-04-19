@@ -53,12 +53,16 @@ export function registerKernelController(
   controller.executeHandler = async (cells, _notebook, executionController) => {
     for (const cell of cells) {
       executionOrder += 1;
-      await executeCell({
+      const wasCancelled = await executeCell({
         cell,
         controller: executionController,
         executionOrder,
         runtime,
       });
+
+      if (wasCancelled) {
+        break;
+      }
     }
   };
 

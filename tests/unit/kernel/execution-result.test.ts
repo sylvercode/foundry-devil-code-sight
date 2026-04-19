@@ -214,3 +214,202 @@ test("normalizeTransportError maps thrown errors", () => {
   assert.equal(normalized.name, "TransportError");
   assert.equal(normalized.message, "socket closed");
 });
+
+test("normalizeTransportError classifies 'CDP evaluation timed out' as timeout", () => {
+  const normalized = normalizeTransportError(
+    new Error("CDP evaluation timed out"),
+  );
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "timeout");
+  assert.equal(normalized.name, "EvaluationTimeout");
+});
+
+test("normalizeTransportError classifies 'Execution was terminated' as timeout", () => {
+  const normalized = normalizeTransportError(
+    new Error("Execution was terminated"),
+  );
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "timeout");
+  assert.equal(normalized.name, "EvaluationTimeout");
+});
+
+test("normalizeTransportError does not classify 'Internal error' as timeout (regression guard)", () => {
+  const normalized = normalizeTransportError(new Error("Internal error"));
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "transport-error");
+  assert.equal(normalized.name, "TransportError");
+});
+
+test("normalizeEvaluationResult classifies promise rejection as promise-rejection", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 10,
+        text: "Uncaught (in promise) TypeError: async boom",
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: {
+          type: "object",
+          className: "TypeError",
+          description: "TypeError: async boom\n    at <anonymous>:1:1",
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "promise-rejection");
+  assert.equal(result.name, "TypeError");
+  assert.equal(result.message, "async boom");
+  assert.match(result.stack ?? "", /TypeError: async boom/);
+});
+
+test("normalizeEvaluationResult classifies non-Error promise rejection as promise-rejection", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 11,
+        text: "Uncaught (in promise) just a string",
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: {
+          type: "string",
+          value: "just a string",
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "promise-rejection");
+});
+
+test("normalizeEvaluationResult classifies timeout exception as timeout", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 12,
+        text: "Script execution timed out.",
+        lineNumber: 0,
+        columnNumber: 0,
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "timeout");
+  assert.equal(result.name, "EvaluationTimeout");
+});
+
+test("normalizeEvaluationResult sanitizes Uncaught (in promise) prefix from rawText", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 13,
+        text: "Uncaught (in promise) RangeError: index out of bounds",
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: {
+          type: "object",
+          className: "RangeError",
+          description:
+            "RangeError: index out of bounds\n    at <anonymous>:1:1",
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "promise-rejection");
+  assert.equal(result.name, "RangeError");
+  assert.equal(result.message, "index out of bounds");
+});
+
+test("normalizeEvaluationResult sync throw still classifies as runtime-error (regression)", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 14,
+        text: "Uncaught Error: sync boom",
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: {
+          type: "object",
+          className: "Error",
+          description: "Error: sync boom\n    at <anonymous>:1:1",
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "runtime-error");
+});
+
+test("normalizeEvaluationResult SyntaxError still classifies as syntax-error (regression)", () => {
+  const result = normalizeEvaluationResult(
+    createResponse({
+      result: { type: "undefined" },
+      exceptionDetails: {
+        exceptionId: 15,
+        text: "Uncaught SyntaxError: Unexpected token ';'",
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: {
+          type: "object",
+          className: "SyntaxError",
+          description:
+            "SyntaxError: Unexpected token ';'\n    at <anonymous>:1:1",
+        },
+      },
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) {
+    return;
+  }
+
+  assert.equal(result.kind, "syntax-error");
+});
+
+test("normalizeEvaluationResult resolved Promise value produces ExecutionSuccess (same as sync)", () => {
+  // awaitPromise: true resolves non-Promise and resolved-Promise values identically
+  const result = normalizeEvaluationResult(
+    createResponse({ result: { type: "number", value: 42 } }),
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    type: "number",
+    value: "42",
+  });
+});

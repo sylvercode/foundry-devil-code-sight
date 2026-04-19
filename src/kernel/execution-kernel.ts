@@ -8,6 +8,7 @@ import {
   normalizeEvaluationResult,
   normalizeTransportError,
   type ExecutionFailure,
+  type ExecutionFailureKind,
   type ExecutionResult,
 } from "./execution-result";
 import {
@@ -21,6 +22,10 @@ export interface NotebookOutputApi {
 }
 
 export type GetActiveConnection = () => ActiveBrowserConnection | undefined;
+
+type EvaluationCompletion =
+  | { kind: "result"; result: ExecutionResult }
+  | { kind: "cancelled" };
 
 export type ReportTransportError = (
   failure: ExecutionFailure,
@@ -59,10 +64,25 @@ export async function executeCell({
   controller,
   executionOrder,
   runtime,
-}: ExecuteCellRequest): Promise<void> {
+}: ExecuteCellRequest): Promise<boolean> {
   const execution = controller.createNotebookCellExecution(cell);
+  let executionEnded = false;
+  const endExecution = (success: boolean): void => {
+    if (executionEnded) {
+      return;
+    }
+
+    execution.end(success, Date.now());
+    executionEnded = true;
+  };
+
   execution.start(Date.now());
   execution.executionOrder = executionOrder;
+
+  if (execution.token.isCancellationRequested) {
+    endExecution(false);
+    return true;
+  }
 
   try {
     const connection = runtime.getActiveConnection();
@@ -75,13 +95,43 @@ export async function executeCell({
         runtime.notebookOutputApi,
         runtime.localize,
       );
-      execution.end(false, Date.now());
-      return;
+      endExecution(false);
+      return false;
     }
 
     const expression = cell.document.getText();
+    let resolveCancellationSignal: (() => void) | undefined;
+    const cancellationSignal = new Promise<void>((resolve) => {
+      resolveCancellationSignal = resolve;
+    });
 
-    const result = await evaluateCellExpression(connection, expression);
+    const cancellationListener = execution.token.onCancellationRequested(() => {
+      void connection.terminateExecution();
+      endExecution(false);
+      resolveCancellationSignal?.();
+    });
+
+    const evaluationPromise = evaluateCellExpression(connection, expression);
+    const completion: EvaluationCompletion = await Promise.race([
+      evaluationPromise.then(
+        (result): EvaluationCompletion => ({ kind: "result", result }),
+      ),
+      cancellationSignal.then(
+        (): EvaluationCompletion => ({ kind: "cancelled" }),
+      ),
+    ]);
+    cancellationListener.dispose();
+
+    if (completion.kind === "cancelled") {
+      return true;
+    }
+
+    const result = completion.result;
+
+    if (execution.token.isCancellationRequested) {
+      endExecution(false);
+      return true;
+    }
 
     if (result.ok) {
       const renderedValue =
@@ -91,8 +141,8 @@ export async function executeCell({
         renderedValue,
         runtime.notebookOutputApi,
       );
-      execution.end(true, Date.now());
-      return;
+      endExecution(true);
+      return false;
     }
 
     if (shouldReportFailure(result)) {
@@ -105,9 +155,11 @@ export async function executeCell({
       runtime.notebookOutputApi,
       runtime.localize,
     );
-    execution.end(false, Date.now());
+    endExecution(false);
+    return false;
   } catch {
-    execution.end(false, Date.now());
+    endExecution(false);
+    return execution.token.isCancellationRequested;
   }
 }
 
@@ -120,8 +172,14 @@ function createNoSessionFailure(localize: Localize): ExecutionFailure {
   };
 }
 
+function isInfrastructureFailure(kind: ExecutionFailureKind): boolean {
+  return (
+    kind === "transport-error" || kind === "no-session" || kind === "timeout"
+  );
+}
+
 function shouldReportFailure(failure: ExecutionFailure): boolean {
-  return failure.kind === "transport-error" || failure.kind === "no-session";
+  return isInfrastructureFailure(failure.kind);
 }
 
 function reportFailureAsync(
@@ -181,7 +239,7 @@ async function writeFailureOutput(
   notebookOutputApi: NotebookOutputApi,
   localize: Localize,
 ): Promise<void> {
-  if (failure.kind === "transport-error" || failure.kind === "no-session") {
+  if (isInfrastructureFailure(failure.kind)) {
     const message = getKernelFailureCellOutputMessage(localize, failure.kind);
 
     await execution.replaceOutput([

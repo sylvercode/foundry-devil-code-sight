@@ -12,6 +12,36 @@ import {
 } from "../profile/target-profile";
 import type { ConnectToTargetResult } from "./connect-types";
 
+const CDP_EVALUATION_TIMEOUT_MS = 30_000;
+
+function raceWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onTimeout?: () => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {
+        onTimeout?.();
+      } catch {
+        // Non-fatal cleanup error.
+      }
+      reject(new Error("CDP evaluation timed out"));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export type BrowserRuntimeEvaluateResult =
   ProtocolMappingApi.Commands["Runtime.evaluate"]["returnType"];
 
@@ -20,6 +50,7 @@ export interface ActiveBrowserConnection {
   sessionId: string;
   endpoint: EndpointConfig;
   evaluate: (expression: string) => Promise<BrowserRuntimeEvaluateResult>;
+  terminateExecution: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -373,21 +404,45 @@ async function connectViaBrowserTargetAttach(
 
     const retainedClient = client;
     const retainedSessionId = attachResult.sessionId;
+
+    const terminateExecution = async (): Promise<void> => {
+      try {
+        await retainedClient.send(
+          "Runtime.terminateExecution",
+          undefined,
+          retainedSessionId,
+        );
+      } catch {
+        // Non-fatal cleanup error.
+      }
+    };
+
     activeBrowserConnection = {
       targetId: targetSelection.target.targetId,
       sessionId: retainedSessionId,
       endpoint,
       evaluate: async (expression: string) =>
-        retainedClient.send(
-          "Runtime.evaluate",
-          {
-            expression,
-            returnByValue: true,
-            awaitPromise: false,
-            generatePreview: false,
+        raceWithTimeout(
+          retainedClient.send(
+            "Runtime.evaluate",
+            {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+              // Required for top-level await in notebook cells.
+              replMode: true,
+              timeout: CDP_EVALUATION_TIMEOUT_MS,
+              generatePreview: false,
+            },
+            retainedSessionId,
+          ),
+          CDP_EVALUATION_TIMEOUT_MS,
+          () => {
+            // Best-effort cancellation of the in-flight evaluation.
+            void terminateExecution();
           },
-          retainedSessionId,
         ),
+      terminateExecution,
       close: async () => {
         await safeClose(retainedClient);
       },

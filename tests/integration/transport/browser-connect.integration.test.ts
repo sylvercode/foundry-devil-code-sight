@@ -6,6 +6,8 @@ import CDP from "chrome-remote-interface";
 import {
   connectToBrowserTarget,
   createAttachToTargetParams,
+  disconnectActiveBrowserConnection,
+  getActiveBrowserConnection,
   toSessionScopedEventName,
 } from "../../../src/transport/browser-connect.js";
 import { coreTargetProfile } from "../../../src/profile/core-target-profile.js";
@@ -266,6 +268,164 @@ test(
       assert.equal(value, 8);
     } finally {
       await externalBrowser.close();
+    }
+  },
+);
+
+test(
+  "active browser connection evaluate supports sync and async expressions in headless Chromium",
+  { skip: !runIntegration },
+  async () => {
+    const connected = await connectToBrowserTarget(
+      { host, port: cdpPort },
+      coreTargetProfile,
+    );
+
+    assert.equal(connected.ok, true);
+
+    try {
+      const activeConnection = getActiveBrowserConnection();
+      assert.ok(activeConnection);
+
+      const syncResult = await activeConnection.evaluate("6 * 7");
+      // In replMode, top-level await is required to get the resolved value.
+      // A bare Promise expression returns the Promise object, not the resolved value.
+      const asyncResult = await activeConnection.evaluate(
+        "await new Promise((resolve) => setTimeout(() => resolve(6 * 8), 0))",
+      );
+
+      assert.equal(syncResult.result?.value, 42);
+      assert.equal(asyncResult.result?.value, 48);
+      assert.equal(syncResult.exceptionDetails, undefined);
+      assert.equal(asyncResult.exceptionDetails, undefined);
+    } finally {
+      await disconnectActiveBrowserConnection();
+    }
+  },
+);
+
+test(
+  "active browser connection evaluate returns exceptionDetails for sync throw and async reject",
+  { skip: !runIntegration },
+  async () => {
+    const connected = await connectToBrowserTarget(
+      { host, port: cdpPort },
+      coreTargetProfile,
+    );
+
+    assert.equal(connected.ok, true);
+
+    try {
+      const activeConnection = getActiveBrowserConnection();
+      assert.ok(activeConnection);
+
+      const syncException = await activeConnection.evaluate(
+        "(() => { throw new Error('sync-fail'); })()",
+      );
+      // In replMode, top-level await is required to surface rejection as exceptionDetails.
+      // A bare Promise.reject() expression is unhandled without await.
+      const asyncException = await activeConnection.evaluate(
+        "await Promise.reject(new Error('async-fail'))",
+      );
+
+      assert.ok(syncException.exceptionDetails);
+      assert.ok(asyncException.exceptionDetails);
+      // Under replMode, exception message surfaces in exceptionDetails.exception.description.
+      assert.match(
+        String(
+          syncException.exceptionDetails?.exception?.description ??
+            syncException.exceptionDetails?.text ??
+            "",
+        ),
+        /sync-fail/i,
+      );
+      assert.match(
+        String(
+          asyncException.exceptionDetails?.exception?.description ??
+            asyncException.exceptionDetails?.text ??
+            "",
+        ),
+        /async-fail/i,
+      );
+    } finally {
+      await disconnectActiveBrowserConnection();
+    }
+  },
+);
+
+test(
+  "Runtime.evaluate timeout is surfaced for sync and async expressions",
+  { skip: !runIntegration },
+  async () => {
+    const browser = await CDP({ host, port: cdpPort });
+
+    try {
+      const { targetInfos } = await browser.Target.getTargets();
+      const pageTarget = targetInfos.find(
+        (target) =>
+          target.type === "page" &&
+          typeof target.url === "string" &&
+          target.url.includes("/game"),
+      );
+
+      assert.ok(pageTarget?.targetId);
+
+      const session = await browser.Target.attachToTarget(
+        createAttachToTargetParams(pageTarget.targetId),
+      );
+
+      await browser.send("Runtime.enable", undefined, session.sessionId);
+
+      const timeoutErrorPattern =
+        /timed out|timeout|Execution was terminated|terminated|Internal error/i;
+
+      await assert.rejects(
+        async () => {
+          await browser.send(
+            "Runtime.evaluate",
+            {
+              expression:
+                "(() => { const start = Date.now(); while (Date.now() - start < 250) {} return 'late-sync'; })()",
+              awaitPromise: false,
+              returnByValue: true,
+              timeout: 50,
+            },
+            session.sessionId,
+          );
+        },
+        (error: unknown) => {
+          const message =
+            typeof error === "object" && error !== null && "message" in error
+              ? String((error as { message?: unknown }).message ?? "")
+              : "";
+          return timeoutErrorPattern.test(message);
+        },
+      );
+
+      await assert.rejects(
+        async () => {
+          await browser.send(
+            "Runtime.evaluate",
+            {
+              expression:
+                "new Promise((resolve) => { const start = Date.now(); while (Date.now() - start < 250) {} resolve('late-async-sync-block'); })",
+              awaitPromise: true,
+              returnByValue: true,
+              timeout: 50,
+            },
+            session.sessionId,
+          );
+        },
+        (error: unknown) => {
+          const message =
+            typeof error === "object" && error !== null && "message" in error
+              ? String((error as { message?: unknown }).message ?? "")
+              : "";
+          return timeoutErrorPattern.test(message);
+        },
+      );
+    } finally {
+      await browser.close();
     }
   },
 );

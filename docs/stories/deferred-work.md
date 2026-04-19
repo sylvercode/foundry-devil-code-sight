@@ -21,3 +21,9 @@
 
 - Timestamp logging uses time-only format (`toLocaleTimeString`) — multi-day sessions produce ambiguous log entries without date context. Pre-existing pattern.
 - `endpointSummary()` re-reads workspace configuration on every tooltip render and log line. Harmless at current event frequency but would be wasteful under rapid state changes. Pre-existing pattern.
+
+## Deferred from: code review of 2-2-run-asynchronous-javascript-cells (2026-04-18)
+
+- ~~`raceWithTimeout` never cancels the underlying CDP evaluation — when the timeout fires, the browser continues executing the expression. `Runtime.terminateExecution` could be used for cleanup. Acceptable for MVP scope.~~ Resolved in Story 2.2 by issuing `Runtime.terminateExecution` on timeout.
+- Magic string coupling between transport timeout message (`"CDP evaluation timed out"`) and kernel regex (`TIMEOUT_ERROR_PATTERN`) — fragile contract via string matching instead of typed error. Requires design decision on shared error contract.
+- `replMode: true` was added to `Runtime.evaluate` params in Story 2.2 without spec authorization. It changes CDP evaluation semantics (top-level await, completion-value return). Flag for Story 2.4 planning to decide whether to keep or remove.

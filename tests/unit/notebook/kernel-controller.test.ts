@@ -33,6 +33,18 @@ type FakeNotebookExecutionController = {
   createNotebookCellExecution: (cell: unknown) => unknown;
 };
 
+function createToken(isCancellationRequested = false): {
+  readonly isCancellationRequested: boolean;
+  onCancellationRequested: (listener: () => void) => { dispose: () => void };
+} {
+  return {
+    isCancellationRequested,
+    onCancellationRequested: () => ({
+      dispose: () => undefined,
+    }),
+  };
+}
+
 type FakeExecuteHandler = (
   cells: FakeNotebookCell[],
   notebook: unknown,
@@ -120,6 +132,7 @@ test("executeHandler dispatches each cell to kernel execution", async () => {
       start: () => undefined,
       end: () => undefined,
       replaceOutput: async () => undefined,
+      token: createToken(),
       set executionOrder(order: number) {
         executionOrders.push(order);
       },
@@ -136,4 +149,59 @@ test("executeHandler dispatches each cell to kernel execution", async () => {
   );
 
   assert.deepEqual(executionOrders, [1, 2]);
+});
+
+test("executeHandler stops dispatching remaining cells after cancellation", async () => {
+  resetExecutionOrderForTests();
+
+  const controller: FakeNotebookController = {
+    id: "",
+    notebookType: "",
+    label: "",
+    supportedLanguages: [],
+  };
+
+  const api = {
+    notebooks: {
+      createNotebookController: () => controller,
+    },
+    l10n: {
+      t: createLocalizeMock(),
+    },
+    NotebookCellOutput: FakeNotebookCellOutput,
+    NotebookCellOutputItem: FakeNotebookCellOutputItem,
+  };
+
+  registerKernelController(api as never);
+
+  let executionCount = 0;
+  const executionOrders: number[] = [];
+
+  const executionController = {
+    createNotebookCellExecution: () => {
+      executionCount += 1;
+
+      return {
+        start: () => undefined,
+        end: () => undefined,
+        replaceOutput: async () => undefined,
+        token: createToken(true),
+        set executionOrder(order: number) {
+          executionOrders.push(order);
+        },
+      };
+    },
+  };
+
+  await controller.executeHandler?.(
+    [
+      { document: { getText: () => "1 + 1" } },
+      { document: { getText: () => "2 + 2" } },
+    ],
+    {},
+    executionController,
+  );
+
+  assert.equal(executionCount, 1);
+  assert.deepEqual(executionOrders, [1]);
 });
