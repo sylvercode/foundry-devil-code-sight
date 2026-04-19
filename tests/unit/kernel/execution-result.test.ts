@@ -415,7 +415,7 @@ test("normalizeEvaluationResult resolved Promise value produces ExecutionSuccess
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Task 2: Serialization Edge-Case Tests (AC: 1)
+// Serialization edge-case tests
 // ──────────────────────────────────────────────────────────────────────────────
 
 test("normalizeEvaluationResult Infinity via unserializableValue", () => {
@@ -562,7 +562,7 @@ test("normalizeEvaluationResult empty string value (edge case)", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Task 3: Contract Shape Invariant Tests (AC: 1, 2, 3, 4)
+// Contract shape invariant tests
 // ──────────────────────────────────────────────────────────────────────────────
 
 test("normalizeEvaluationResult success contract: exact shape, no extra properties", () => {
@@ -641,7 +641,7 @@ test("normalizeTransportError contract: exact shape, no extra properties", () =>
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Task 4: Classification Parity Tests (AC: 4)
+// Classification parity tests
 // ──────────────────────────────────────────────────────────────────────────────
 
 test("normalizeEvaluationResult classification parity: sync throw vs async rejection produce identical shapes except kind", () => {

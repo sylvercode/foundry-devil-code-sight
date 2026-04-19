@@ -172,7 +172,7 @@ test("executeCell evaluates expression and writes success output", async () => {
   assert.equal(execution.outputs.length, 1);
   assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
   assert.equal(execution.outputs[0]?.items[0]?.value, "4");
-  // Task 5 (AC 1): Success output uses text/plain MIME with no CDP fields
+  // Success output remains plain text with text/plain MIME.
   assert.equal(execution.outputs[0]?.items[0]?.mime, "text/plain");
 });
 
@@ -318,7 +318,7 @@ test("executeCell writes structured error output for runtime exception", async (
   assert.ok(renderedError instanceof Error);
   assert.equal(renderedError.name, "TypeError");
   assert.equal(renderedError.message, "boom");
-  // Task 5 (AC 1, AC 3): Error output contract - Error object with name, message, optional stack
+  // User-code errors are surfaced as Error objects without protocol-specific fields.
   assert.equal(typeof renderedError.name, "string");
   assert.equal(typeof renderedError.message, "string");
   assert.ok(!("kind" in renderedError));
@@ -543,7 +543,7 @@ test("executeCell writes text output and reports failure for timeout", async () 
   assert.equal(execution.success, false);
   assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
   assert.deepEqual(reportedFailures, ["timeout"]);
-  // Task 5 (AC 3): Infrastructure failure uses text/plain with localized message
+  // Infrastructure failures render localized plain text output.
   assert.equal(execution.outputs[0]?.items[0]?.mime, "text/plain");
 });
 
