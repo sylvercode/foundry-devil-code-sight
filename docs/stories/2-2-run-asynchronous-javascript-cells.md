@@ -167,7 +167,7 @@ So that notebook execution supports real runtime workflows that use async APIs.
 - [x] Run `npm run lint` — no new warnings or errors.
 - [x] Run `npm run test:unit` — all unit tests pass including new tests.
 - [x] Run `npm run compile` — clean compilation with no type errors.
-- [ ] Manually verify in Extension Development Host (if available):
+- [x] Manually verify in Extension Development Host (if available):
   - [x] Run `await new Promise(r => setTimeout(r, 1000)).then(() => 42)` → see `42` inline.
   - [x] Run `await Promise.reject(new TypeError("async boom"))` → see structured error with `TypeError` name.
     - _Post-test note_: The cell must use `await`. Without `await`, CDP's `awaitPromise: true` does not intercept the rejection — the Promise object itself is serialised as `{}` and the rejection escapes to the browser console as an unhandled error. This is an inherent limitation of evaluating without an enclosing async context and is **expected and acceptable** for Story 2.2. Wrapping cell code in an async IIFE (so all expressions implicitly become awaitable and return values work) is planned for Story 2.4.
@@ -182,7 +182,7 @@ So that notebook execution supports real runtime workflows that use async APIs.
 - [x] [Review][Dismiss] `TIMEOUT_ERROR_PATTERN` regex breadth accepted — broad match is intentional per dev notes. Network timeouts during active evaluation are rare and misclassification is acceptable. [src/kernel/execution-result.ts:44]
 - [x] [Review][Patch] Import ordering — `raceWithTimeout` function body placed between import groups, violating ES module convention [src/transport/browser-connect.ts:5-27]
 - [x] [Review][Patch] `evaluate` lambda changed from `async` to non-`async` — removes synchronous throw safety. If `retainedClient.send()` throws synchronously (bad client state), the caller gets a synchronous exception instead of a rejected Promise [src/transport/browser-connect.ts:404]
-- [x] [Review][Defer] `raceWithTimeout` never cancels the underlying CDP evaluation — when the timeout fires, the browser continues executing the expression. `Runtime.terminateExecution` could be used for cleanup. [src/transport/browser-connect.ts:5-27] — deferred, acceptable for MVP scope
+- [x] [Review][Patch] `raceWithTimeout` now cancels in-flight CDP execution on timeout via `Runtime.terminateExecution`, preventing background script continuation after timeout. [src/transport/browser-connect.ts:16-38, src/transport/browser-connect.ts:420-428]
 - [x] [Review][Defer] Magic string coupling between transport timeout message (`"CDP evaluation timed out"`) and kernel regex (`TIMEOUT_ERROR_PATTERN`) — fragile contract via string matching instead of typed error [src/transport/browser-connect.ts:8, src/kernel/execution-result.ts:44] — deferred, requires design decision on shared error contract
 
 ## Dev Notes

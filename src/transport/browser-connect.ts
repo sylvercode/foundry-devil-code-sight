@@ -17,9 +17,15 @@ const CDP_EVALUATION_TIMEOUT_MS = 30_000;
 function raceWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
+  onTimeout?: () => void,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
+      try {
+        onTimeout?.();
+      } catch {
+        // Non-fatal cleanup error.
+      }
       reject(new Error("CDP evaluation timed out"));
     }, timeoutMs);
 
@@ -417,6 +423,14 @@ async function connectViaBrowserTargetAttach(
             retainedSessionId,
           ),
           CDP_EVALUATION_TIMEOUT_MS,
+          () => {
+            // Best-effort cancellation of the in-flight evaluation.
+            void retainedClient
+              .send("Runtime.terminateExecution", undefined, retainedSessionId)
+              .catch(() => {
+                // Non-fatal cleanup error.
+              });
+          },
         ),
       close: async () => {
         await safeClose(retainedClient);
