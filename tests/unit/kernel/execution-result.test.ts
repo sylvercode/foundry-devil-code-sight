@@ -215,6 +215,34 @@ test("normalizeTransportError maps thrown errors", () => {
   assert.equal(normalized.message, "socket closed");
 });
 
+test("normalizeTransportError classifies 'CDP evaluation timed out' as timeout", () => {
+  const normalized = normalizeTransportError(
+    new Error("CDP evaluation timed out"),
+  );
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "timeout");
+  assert.equal(normalized.name, "EvaluationTimeout");
+});
+
+test("normalizeTransportError classifies 'Execution was terminated' as timeout", () => {
+  const normalized = normalizeTransportError(
+    new Error("Execution was terminated"),
+  );
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "timeout");
+  assert.equal(normalized.name, "EvaluationTimeout");
+});
+
+test("normalizeTransportError does not classify 'Internal error' as timeout (regression guard)", () => {
+  const normalized = normalizeTransportError(new Error("Internal error"));
+
+  assert.equal(normalized.ok, false);
+  assert.equal(normalized.kind, "transport-error");
+  assert.equal(normalized.name, "TransportError");
+});
+
 test("normalizeEvaluationResult classifies promise rejection as promise-rejection", () => {
   const result = normalizeEvaluationResult(
     createResponse({

@@ -431,3 +431,42 @@ test("executeCell still produces success output for resolved async value (regres
   assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
   assert.equal(execution.outputs[0]?.items[0]?.value, "42");
 });
+
+test("executeCell classifies transport-thrown timeout error as timeout kind with text output", async () => {
+  // Simulates raceWithTimeout or CDP throwing "CDP evaluation timed out"
+  // instead of returning exceptionDetails — the pipeline must classify it as
+  // timeout, not transport-error.
+  const connection = createFakeConnection(async () => {
+    throw new Error("CDP evaluation timed out");
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  const reportedFailures: string[] = [];
+
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+    (failure) => {
+      reportedFailures.push(failure.kind);
+    },
+  );
+
+  await executeCell({
+    cell: createFakeCell("new Promise(() => {})") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 5,
+    runtime,
+  });
+
+  assert.equal(execution.success, false);
+  // Timeout is an infrastructure failure — text output, not structured Error
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+  assert.match(String(execution.outputs[0]?.items[0]?.value), /timed out/i);
+  assert.deepEqual(reportedFailures, ["timeout"]);
+});

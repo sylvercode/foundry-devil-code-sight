@@ -1,6 +1,28 @@
 import os from "node:os";
 
 const CDP_EVALUATION_TIMEOUT_MS = 30_000;
+
+function raceWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("CDP evaluation timed out"));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 import { isIP } from "node:net";
 import CDP from "chrome-remote-interface";
 import type ProtocolMappingApi from "devtools-protocol/types/protocol-mapping";
@@ -379,17 +401,22 @@ async function connectViaBrowserTargetAttach(
       targetId: targetSelection.target.targetId,
       sessionId: retainedSessionId,
       endpoint,
-      evaluate: async (expression: string) =>
-        retainedClient.send(
-          "Runtime.evaluate",
-          {
-            expression,
-            returnByValue: true,
-            awaitPromise: true,
-            timeout: CDP_EVALUATION_TIMEOUT_MS,
-            generatePreview: false,
-          },
-          retainedSessionId,
+      evaluate: (expression: string) =>
+        raceWithTimeout(
+          retainedClient.send(
+            "Runtime.evaluate",
+            {
+              expression,
+              returnByValue: true,
+              awaitPromise: true,
+              // Required for top-level await in notebook cells.
+              replMode: true,
+              timeout: CDP_EVALUATION_TIMEOUT_MS,
+              generatePreview: false,
+            },
+            retainedSessionId,
+          ),
+          CDP_EVALUATION_TIMEOUT_MS,
         ),
       close: async () => {
         await safeClose(retainedClient);

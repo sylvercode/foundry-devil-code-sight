@@ -168,11 +168,13 @@ So that notebook execution supports real runtime workflows that use async APIs.
 - [x] Run `npm run test:unit` — all unit tests pass including new tests.
 - [x] Run `npm run compile` — clean compilation with no type errors.
 - [ ] Manually verify in Extension Development Host (if available):
-  - [ ] Run `await new Promise(r => setTimeout(r, 1000)).then(() => 42)` → see `42` inline.
-  - [ ] Run `Promise.reject(new TypeError("async boom"))` → see structured error with `TypeError` name.
-  - [ ] Run `new Promise(() => {})` → after timeout, see timeout diagnostic message.
-  - [ ] Run `2 + 2` (sync) → still see `4` inline (regression check).
-  - [ ] Run `throw new Error("sync boom")` (sync) → still see structured error (regression check).
+  - [x] Run `await new Promise(r => setTimeout(r, 1000)).then(() => 42)` → see `42` inline.
+  - [x] Run `await Promise.reject(new TypeError("async boom"))` → see structured error with `TypeError` name.
+    - _Post-test note_: The cell must use `await`. Without `await`, CDP's `awaitPromise: true` does not intercept the rejection — the Promise object itself is serialised as `{}` and the rejection escapes to the browser console as an unhandled error. This is an inherent limitation of evaluating without an enclosing async context and is **expected and acceptable** for Story 2.2. Wrapping cell code in an async IIFE (so all expressions implicitly become awaitable and return values work) is planned for Story 2.4.
+  - [x] Run `await new Promise(() => {})` → after timeout, see timeout diagnostic message.
+    - _Post-test note_: The cell must use `await` for the same reason as above — a bare `new Promise(() => {})` resolves immediately to `{}`.
+  - [x] Run `2 + 2` (sync) → still see `4` inline (regression check).
+  - [x] Run `throw new Error("sync boom")` (sync) → still see structured error (regression check).
 
 ## Dev Notes
 
@@ -222,7 +224,15 @@ The integration tests added after implementation refined several assumptions abo
 - Promise rejection detection via `exceptionDetails.text.includes("(in promise)")` remains valid.
 - For async rejections, the useful rejection signal is in `exceptionDetails.text`; `result.description` may be empty and `result.value` may be `{}`.
 
-**Implication for follow-up work:** base code should not rely exclusively on CDP's `timeout` parameter or `exceptionDetails.text.includes("timed out")` for timeout classification. A higher-level evaluation timeout wrapper and broader timeout transport-error mapping are likely required.
+**What was implemented in Story 2.2 to address these findings:**
+
+- Added a higher-level timeout wrapper around `Runtime.evaluate` in transport (`raceWithTimeout`) so timeout behavior does not depend only on CDP's internal `timeout` handling.
+- Expanded timeout normalization in `normalizeTransportError` to classify both explicit wrapper timeout errors and CDP transport-level timeout-like failures (including `"Execution was terminated"` and generic `"timed out"` variants) as `kind: "timeout"`.
+- Preserved promise-rejection classification based on `exceptionDetails.text.includes("(in promise)")`, which remains the stable signal for rejected Promise failures.
+
+**Remaining follow-up (post Story 2.2):**
+
+- Bare non-awaited Promise expressions (for example `Promise.reject(...)`) still serialize as `{}` and can surface as unhandled browser-console errors unless the cell explicitly uses `await`. This behavior is accepted for Story 2.2 and is planned to be improved in Story 2.4.
 
 #### Promise Rejection Detection via CDP
 
@@ -369,6 +379,7 @@ None.
 - Downstream reporter (`kernel-transport-failure-reporter.ts`) verified correct end-to-end — no changes needed.
 - 99 unit tests pass (7 new normalization tests, 3 new kernel pipeline tests, 10 new message function tests).
 - Post-implementation headless-CDP integration coverage refined two assumptions in the original story: Promise settlement is not reliably bounded by CDP's `timeout` parameter alone, and timeout failures may surface as transport-level errors like `"Execution was terminated"` or `"Internal error"` rather than `exceptionDetails.text` containing `"timed out"`.
+- Manual E2E testing confirmed that bare (non-awaited) Promise expressions — e.g. `Promise.reject(new TypeError("async boom"))` — are serialised by CDP as `{}` and the rejection escapes to the browser console rather than surfacing inline. This is an inherent limitation of evaluating without an enclosing async context. Cells must `await` their Promises for Story 2.2's rejection path to fire correctly. Transparent top-level await support (via async IIFE wrapping) is deferred to Story 2.4, which will also need to handle implicit return-value lifting and stack-trace line-number offsets introduced by the wrapper.
 
 ### File List
 

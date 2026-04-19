@@ -41,7 +41,24 @@ export function normalizeEvaluationResult(
   };
 }
 
+const TIMEOUT_ERROR_PATTERN =
+  /CDP evaluation timed out|Execution was terminated|timed out/i;
+
+function isTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return TIMEOUT_ERROR_PATTERN.test(message);
+}
+
 export function normalizeTransportError(error: unknown): ExecutionFailure {
+  if (isTimeoutError(error)) {
+    return {
+      ok: false,
+      name: "EvaluationTimeout",
+      kind: "timeout",
+      message: "Evaluation timed out.",
+    };
+  }
+
   const message = error instanceof Error ? error.message : String(error);
   const stack = error instanceof Error ? error.stack : undefined;
 
