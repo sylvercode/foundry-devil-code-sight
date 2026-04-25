@@ -100,6 +100,7 @@ export async function executeCell({
     }
 
     const expression = cell.document.getText();
+    const sourceUri = cell.document.uri.toString();
     let resolveCancellationSignal: (() => void) | undefined;
     const cancellationSignal = new Promise<void>((resolve) => {
       resolveCancellationSignal = resolve;
@@ -111,7 +112,11 @@ export async function executeCell({
       resolveCancellationSignal?.();
     });
 
-    const evaluationPromise = evaluateCellExpression(connection, expression);
+    const evaluationPromise = evaluateCellExpression(
+      connection,
+      expression,
+      sourceUri,
+    );
     const completion: EvaluationCompletion = await Promise.race([
       evaluationPromise.then(
         (result): EvaluationCompletion => ({ kind: "result", result }),
@@ -203,9 +208,10 @@ function reportFailureAsync(
 async function evaluateCellExpression(
   connection: ActiveBrowserConnection,
   expression: string,
+  sourceUri: string,
 ): Promise<ExecutionResult> {
   try {
-    const expressionWithLabel = addSourceLabeling(expression);
+    const expressionWithLabel = addSourceLabeling(expression, sourceUri);
     const rawResponse = await connection.evaluate(expressionWithLabel);
     return normalizeEvaluationResult(rawResponse);
   } catch (error) {
@@ -213,11 +219,11 @@ async function evaluateCellExpression(
   }
 }
 
-function addSourceLabeling(expression: string): string {
+function addSourceLabeling(expression: string, sourceUri: string): string {
   // Adding a sourceURL label to the expression allows browser devtools to
   // associate the evaluated code with a "file",
   // which can improve debugging and error stack traces.
-  const sourceLabel = `//# sourceURL=cell.js`;
+  const sourceLabel = `//# sourceURL=${sourceUri}`;
   return `${expression}\n${sourceLabel}`;
 }
 

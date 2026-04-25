@@ -61,6 +61,9 @@ interface ExecutionRecorder {
   cancel: () => void;
 }
 
+const DEFAULT_FAKE_CELL_URI =
+  "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/test1.ipynb#ch0000000000000";
+
 function createExecutionRecorder(options?: {
   isCancellationRequested?: boolean;
 }): ExecutionRecorder {
@@ -113,10 +116,21 @@ function createExecutionRecorder(options?: {
   };
 }
 
-function createFakeCell(text: string): { document: { getText: () => string } } {
+function createFakeCell(
+  text: string,
+  sourceUri: string = DEFAULT_FAKE_CELL_URI,
+): {
+  document: {
+    getText: () => string;
+    uri: { toString: () => string };
+  };
+} {
   return {
     document: {
       getText: () => text,
+      uri: {
+        toString: () => sourceUri,
+      },
     },
   };
 }
@@ -135,6 +149,8 @@ function createFakeConnection(
 }
 
 test("executeCell evaluates expression and writes success output", async () => {
+  const sourceUri =
+    "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/test1.ipynb#ch0000000000001";
   const evaluateCalls: string[] = [];
   const connection = createFakeConnection(async (expression) => {
     evaluateCalls.push(expression);
@@ -158,7 +174,7 @@ test("executeCell evaluates expression and writes success output", async () => {
   );
 
   await executeCell({
-    cell: createFakeCell("2 + 2") as never,
+    cell: createFakeCell("2 + 2", sourceUri) as never,
     controller: {
       createNotebookCellExecution: () => notebookExecution,
     } as never,
@@ -166,7 +182,7 @@ test("executeCell evaluates expression and writes success output", async () => {
     runtime,
   });
 
-  assert.deepEqual(evaluateCalls, ["2 + 2\n//# sourceURL=cell.js"]);
+  assert.deepEqual(evaluateCalls, [`2 + 2\n//# sourceURL=${sourceUri}`]);
   assert.equal(notebookExecution.executionOrder, 7);
   assert.equal(execution.success, true);
   assert.equal(execution.outputs.length, 1);
