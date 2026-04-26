@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-04-22T00:00:00-04:00
+last_updated: 2026-04-26T00:00:00-04:00
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -59,7 +59,7 @@ development_status:
   2-2-run-asynchronous-javascript-cells: done
   2-3-normalize-success-and-failure-output-contracts: done
   2-spike-cdp-sourceurl-debugger: done
-  2-4-support-fast-rerun-and-iteration-patterns: backlog
+  2-4-support-fast-rerun-and-iteration-patterns: ready-for-dev
   2-5-enable-source-level-breakpoint-debugging: backlog
   epic-2-retrospective: optional
 
