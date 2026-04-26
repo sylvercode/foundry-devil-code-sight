@@ -100,7 +100,7 @@ export async function executeCell({
     }
 
     const expression = cell.document.getText();
-    const sourceUri = cell.document.uri.toString();
+    const sourceUriStr = cell.document.uri.toString();
     let resolveCancellationSignal: (() => void) | undefined;
     const cancellationSignal = new Promise<void>((resolve) => {
       resolveCancellationSignal = resolve;
@@ -115,7 +115,7 @@ export async function executeCell({
     const evaluationPromise = evaluateCellExpression(
       connection,
       expression,
-      sourceUri,
+      sourceUriStr,
     );
     const completion: EvaluationCompletion = await Promise.race([
       evaluationPromise.then(
