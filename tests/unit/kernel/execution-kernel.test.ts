@@ -783,7 +783,7 @@ test("executeCell routes metadata cases to wrapper only when isolated is boolean
   assert.equal(evaluateCalls[4]?.startsWith("await (async()=>{"), true);
 });
 
-test("executeCell prepends isolated annotation in a single successful output", async () => {
+test("executeCell prepends isolated annotation as a separate rendered output", async () => {
   const connection = createFakeConnection(async () => {
     return {
       result: {
@@ -815,10 +815,13 @@ test("executeCell prepends isolated annotation in a single successful output", a
   });
 
   assert.equal(execution.success, true);
-  assert.equal(execution.outputs.length, 1);
+  assert.equal(execution.outputs.length, 2);
   assert.equal(execution.outputs[0]?.items.length, 1);
   assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
-  assert.equal(execution.outputs[0]?.items[0]?.value, "(isolated cell)\n7");
+  assert.equal(execution.outputs[0]?.items[0]?.value, "(isolated cell)");
+  assert.equal(execution.outputs[1]?.items.length, 1);
+  assert.equal(execution.outputs[1]?.items[0]?.kind, "text");
+  assert.equal(execution.outputs[1]?.items[0]?.value, "7");
 });
 
 test("executeCell does not prepend isolated annotation for failure outputs", async () => {

@@ -48,6 +48,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.isolate",
+          "when": "false"
+        },
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.share",
+          "when": "false"
+        }
+      ],
       "notebook/cell/title": [
         {
           "command": "jupyterBrowserKernel.toggleCellIsolation.isolate",

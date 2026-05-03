@@ -241,16 +241,25 @@ async function writeSuccessOutput(
   localize: Localize,
   isIsolated: boolean,
 ): Promise<void> {
-  const displayValue = isIsolated
-    ? `${getIsolationAnnotationMessage(localize)}\n${value}`
-    : value;
-  const outputItems = [
-    notebookOutputApi.NotebookCellOutputItem.text(displayValue, "text/plain"),
-  ];
+  const outputs = isIsolated
+    ? [
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(
+            getIsolationAnnotationMessage(localize),
+            "text/plain",
+          ),
+        ]),
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(value, "text/plain"),
+        ]),
+      ]
+    : [
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(value, "text/plain"),
+        ]),
+      ];
 
-  await execution.replaceOutput([
-    new notebookOutputApi.NotebookCellOutput(outputItems),
-  ]);
+  await execution.replaceOutput(outputs);
 }
 
 async function writeFailureOutput(
