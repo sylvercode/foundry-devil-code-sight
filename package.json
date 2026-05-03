@@ -33,8 +33,46 @@
       {
         "command": "jupyterBrowserKernel.reconnect",
         "title": "%command.reconnect.title%"
+      },
+      {
+        "command": "jupyterBrowserKernel.toggleCellIsolation",
+        "title": "%command.toggleCellIsolation.title%"
+      },
+      {
+        "command": "jupyterBrowserKernel.toggleCellIsolation.isolate",
+        "title": "%command.toggleCellIsolation.isolate.label%"
+      },
+      {
+        "command": "jupyterBrowserKernel.toggleCellIsolation.share",
+        "title": "%command.toggleCellIsolation.share.label%"
       }
     ],
+    "menus": {
+      "notebook/cell/title": [
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.isolate",
+          "when": "notebookType == 'jupyter-notebook' && notebookCellType == 'code' && jupyterBrowserKernel.activeNotebookUsesBrowserKernel && !jupyterBrowserKernel.activeCellIsolated",
+          "group": "navigation@50"
+        },
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.share",
+          "when": "notebookType == 'jupyter-notebook' && notebookCellType == 'code' && jupyterBrowserKernel.activeNotebookUsesBrowserKernel && jupyterBrowserKernel.activeCellIsolated",
+          "group": "navigation@50"
+        }
+      ],
+      "notebook/cell/context": [
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.isolate",
+          "when": "notebookType == 'jupyter-notebook' && notebookCellType == 'code' && jupyterBrowserKernel.activeNotebookUsesBrowserKernel && !jupyterBrowserKernel.activeCellIsolated",
+          "group": "z_commands@50"
+        },
+        {
+          "command": "jupyterBrowserKernel.toggleCellIsolation.share",
+          "when": "notebookType == 'jupyter-notebook' && notebookCellType == 'code' && jupyterBrowserKernel.activeNotebookUsesBrowserKernel && jupyterBrowserKernel.activeCellIsolated",
+          "group": "z_commands@50"
+        }
+      ]
+    },
     "configuration": {
       "title": "%configuration.title%",
       "properties": {

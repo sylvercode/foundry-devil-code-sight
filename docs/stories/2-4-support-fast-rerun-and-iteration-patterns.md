@@ -2,7 +2,7 @@
 storyId: "2.4"
 storyKey: "2-4-support-fast-rerun-and-iteration-patterns"
 title: "Support Fast Rerun and Iteration Patterns"
-status: "ready-for-dev"
+status: "review"
 created: "2026-04-26"
 epic: "2"
 priority: "p0"
@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 2.4: Support Fast Rerun and Iteration Patterns
 
-**Status:** ready-for-dev
+**Status:** review
 
 ## Story
 
@@ -100,17 +100,17 @@ So that I can iterate rapidly without connection overhead or state confusion.
 
 The current production code already emits `\n//# sourceURL=${cell.document.uri.toString()}` (see [src/kernel/execution-kernel.ts](../../src/kernel/execution-kernel.ts) `addSourceLabeling`). This task locks that behavior under explicit unit coverage and a named helper.
 
-- [ ] In `src/kernel/`, extract a small named helper `buildCellExpression(userCode: string, sourceUri: string, options: { isolate: boolean }): string` (see Task 2 for `isolate` semantics). The helper is the single source of truth for what is sent to `connection.evaluate`.
-- [ ] When `isolate: false`, the helper returns `${userCode}\n//# sourceURL=${sourceUri}\n` (same `\n` placement as today; trailing `\n` is recommended by spike findings — see Dev Notes "SourceURL placement").
-- [ ] Replace the inline `addSourceLabeling` call site in `executeCell` with the new helper.
-- [ ] Use `cell.document.uri.toString()` unchanged. Do NOT reconstruct, encode, decode, or normalize the URI. The exact runtime cell URI string is the source of identity. [Source: spike/cdp-sourceurl-debugger-findings.md#Decisions-Locked, .memory/cdp-eval-notes.md]
-- [ ] Update [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kernel/execution-kernel.test.ts) line 185 expectation to match the helper output (account for trailing `\n` if introduced; otherwise leave the assertion shape unchanged).
+- [x] In `src/kernel/`, extract a small named helper `buildCellExpression(userCode: string, sourceUri: string, options: { isolate: boolean }): string` (see Task 2 for `isolate` semantics). The helper is the single source of truth for what is sent to `connection.evaluate`.
+- [x] When `isolate: false`, the helper returns `${userCode}\n//# sourceURL=${sourceUri}\n` (same `\n` placement as today; trailing `\n` is recommended by spike findings — see Dev Notes "SourceURL placement").
+- [x] Replace the inline `addSourceLabeling` call site in `executeCell` with the new helper.
+- [x] Use `cell.document.uri.toString()` unchanged. Do NOT reconstruct, encode, decode, or normalize the URI. The exact runtime cell URI string is the source of identity. [Source: spike/cdp-sourceurl-debugger-findings.md#Decisions-Locked, .memory/cdp-eval-notes.md]
+- [x] Update [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kernel/execution-kernel.test.ts) line 185 expectation to match the helper output (account for trailing `\n` if introduced; otherwise leave the assertion shape unchanged).
 
 ### 2. Implement the Pattern B Isolation Wrapper (AC: 3, 6, 7)
 
 Pattern B is the only wrapper strategy permitted. It wraps the user expression with `(async()=>{` on the **same line** as the user's first source line and `})()` on the **same line** as the user's last source line. This preserves user-visible line numbers exactly, is breakpoint-friendly per spike Q1+Q5, and supports top-level `await` inside the wrapper. [Source: spike/cdp-sourceurl-debugger-findings.md#Q5, spike/cdp-sourceurl-debugger-findings.md#Decisions-Locked]
 
-- [ ] In the new helper from Task 1, when `isolate: true`, build the wrapped expression as exactly:
+- [x] In the new helper from Task 1, when `isolate: true`, build the wrapped expression as exactly:
 
   ```text
   (async()=>{<userCode-line-1>\n<userCode-line-2>\n...\n<userCode-line-N>})()
@@ -119,24 +119,24 @@ Pattern B is the only wrapper strategy permitted. It wraps the user expression w
 
   Concretely: split `userCode` on `\n`, prepend `(async()=>{` to the first element, append `})()` to the last element, rejoin with `\n`, then append `\n//# sourceURL=${sourceUri}\n`.
 
-- [ ] Single-line user code is a degenerate case: `(async()=>{<userCode>})()`. The helper must produce that exact shape (no synthesized newline before or after user code).
+- [x] Single-line user code is a degenerate case: `(async()=>{<userCode>})()`. The helper must produce that exact shape (no synthesized newline before or after user code).
 
-- [ ] Empty user code (`""`) must produce a syntactically valid no-op `(async()=>{})()`. (This guards against degenerate cells; the kernel still emits the sourceURL line.)
+- [x] Empty user code (`""`) must produce a syntactically valid no-op `(async()=>{})()`. (This guards against degenerate cells; the kernel still emits the sourceURL line.)
 
-- [ ] Do NOT attempt to apply the wrapper to cells that already start with `(async()=>{` or to "auto-detect" wrapping — the contract is binary: wrapper is applied if and only if the isolation flag is set.
+- [x] Do NOT attempt to apply the wrapper to cells that already start with `(async()=>{` or to "auto-detect" wrapping — the contract is binary: wrapper is applied if and only if the isolation flag is set.
 
-- [ ] Do NOT introduce inline `//# sourceMappingURL=` directives, multi-line wrappers, `Function`-constructor wrapping, `Runtime.compileScript` / `Runtime.runScript`, or any source-map fallback. These were rejected by spike Q6. [Source: spike/cdp-sourceurl-debugger-findings.md#Q6]
+- [x] Do NOT introduce inline `//# sourceMappingURL=` directives, multi-line wrappers, `Function`-constructor wrapping, `Runtime.compileScript` / `Runtime.runScript`, or any source-map fallback. These were rejected by spike Q6. [Source: spike/cdp-sourceurl-debugger-findings.md#Q6]
 
-- [ ] Do NOT call `Debugger.enable`, `Debugger.setBreakpointByUrl`, or any Debugger-domain method from this story. Story 2.5 owns the Debugger mirror. [Source: spike/cdp-sourceurl-debugger-findings.md#Decisions-Locked]
+- [x] Do NOT call `Debugger.enable`, `Debugger.setBreakpointByUrl`, or any Debugger-domain method from this story. Story 2.5 owns the Debugger mirror. [Source: spike/cdp-sourceurl-debugger-findings.md#Decisions-Locked]
 
 ### 3. Define the Isolation Opt-In Contract (AC: 3)
 
 This story owns the wire-format for opt-in isolation. The recommended contract uses VS Code notebook cell metadata, which round-trips through `.ipynb` and is editable from the Cell Properties UI.
 
-- [ ] Pick the metadata key `cell.metadata.jupyterBrowserKernel.isolated` (boolean). When present and `=== true`, the kernel applies the Pattern B wrapper for that cell. Any other value (including missing, `false`, non-boolean, non-object metadata) means **not isolated** — default state-accumulation semantics apply. [Source: docs/architecture.md#API-Naming-Conventions, .github/copilot-instructions.md#Coding-Standards — settings/metadata namespace `jupyterBrowserKernel.*`]
-- [ ] In [src/kernel/execution-kernel.ts](../../src/kernel/execution-kernel.ts) `executeCell`, read the metadata before building the expression. Pass the resulting boolean into the helper from Task 1.
-- [ ] Validate with a defensive type guard. Do not throw on malformed metadata; default to `isolate: false`.
-- [ ] After successful execution of an isolated cell, append a small annotation to the cell output indicating the isolation boundary applied — e.g., a localized `text/plain` line `"(isolated cell)"`. Place the annotation **before** the value output so it is visible alongside the result. The annotation must be:
+- [x] Pick the metadata key `cell.metadata.jupyterBrowserKernel.isolated` (boolean). When present and `=== true`, the kernel applies the Pattern B wrapper for that cell. Any other value (including missing, `false`, non-boolean, non-object metadata) means **not isolated** — default state-accumulation semantics apply. [Source: docs/architecture.md#API-Naming-Conventions, .github/copilot-instructions.md#Coding-Standards — settings/metadata namespace `jupyterBrowserKernel.*`]
+- [x] In [src/kernel/execution-kernel.ts](../../src/kernel/execution-kernel.ts) `executeCell`, read the metadata before building the expression. Pass the resulting boolean into the helper from Task 1.
+- [x] Validate with a defensive type guard. Do not throw on malformed metadata; default to `isolate: false`.
+- [x] After successful execution of an isolated cell, append a small annotation to the cell output indicating the isolation boundary applied — e.g., a localized `text/plain` line `"(isolated cell)"`. Place the annotation **before** the value output so it is visible alongside the result. The annotation must be:
   - Localized via `vscode.l10n.t(...)` (add a new key to [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json) and [package.nls.json](../../package.nls.json) where appropriate).
   - Suppressed for failure outputs (failure annotations are owned by the existing failure path; do not duplicate there).
   - Implemented as an additional `NotebookCellOutputItem.text(..., "text/plain")` item inside the existing `NotebookCellOutput`, NOT as a separate `NotebookCellOutput` (keeps a single output container per cell run, consistent with existing rendering).
@@ -145,24 +145,24 @@ This story owns the wire-format for opt-in isolation. The recommended contract u
 
 ### 4. Wire Helper Into `executeCell` (AC: 1, 2, 4, 5, 6)
 
-- [ ] In `executeCell`, replace the existing call sequence (`expression = cell.document.getText(); sourceUriStr = cell.document.uri.toString(); ...evaluateCellExpression(connection, expression, sourceUriStr)`) with:
+- [x] In `executeCell`, replace the existing call sequence (`expression = cell.document.getText(); sourceUriStr = cell.document.uri.toString(); ...evaluateCellExpression(connection, expression, sourceUriStr)`) with:
   1. Read `userCode = cell.document.getText()`.
   2. Read `sourceUri = cell.document.uri.toString()`.
   3. Compute `isolate = readIsolationMetadata(cell)`.
   4. Call `expression = buildCellExpression(userCode, sourceUri, { isolate })`.
   5. Call `connection.evaluate(expression)` (existing path).
-- [ ] Remove the standalone `addSourceLabeling` function once `buildCellExpression` covers both isolated and non-isolated paths.
-- [ ] AC 1 ("no reconnect cycle") and AC 4 ("inline visibility") are already satisfied by the existing kernel + transport implementation. Do NOT introduce new connection-state checks, retries, or output-redirection logic. This story validates these properties via tests; it does not re-architect them.
-- [ ] AC 2 ("state accumulates by default") is already satisfied by `Runtime.evaluate({ replMode: true, ... })` REPL bindings on the V8 execution context (top-level `let`/`const`/`var`/`function` persist across evaluations on the same context). This story validates this property via the contract test in Task 5; no production change is required for the default path.
+- [x] Remove the standalone `addSourceLabeling` function once `buildCellExpression` covers both isolated and non-isolated paths.
+- [x] AC 1 ("no reconnect cycle") and AC 4 ("inline visibility") are already satisfied by the existing kernel + transport implementation. Do NOT introduce new connection-state checks, retries, or output-redirection logic. This story validates these properties via tests; it does not re-architect them.
+- [x] AC 2 ("state accumulates by default") is already satisfied by `Runtime.evaluate({ replMode: true, ... })` REPL bindings on the V8 execution context (top-level `let`/`const`/`var`/`function` persist across evaluations on the same context). This story validates this property via the contract test in Task 5; no production change is required for the default path.
 
 ### 5. Unit Tests — SourceURL Identity, Wrapper Shape, Metadata Routing (AC: 3, 5, 6, 7)
 
 Add tests in [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kernel/execution-kernel.test.ts) (and a new sibling `tests/unit/kernel/build-cell-expression.test.ts` if the helper is exported separately). Use the existing `createFakeConnection` / `createExecutionRecorder` patterns.
 
-- [ ] **SourceURL identity (AC 5):** rerun the same cell URI twice; assert the captured `evaluate` expressions end with the **identical** `\n//# sourceURL=<uri>\n` suffix bytes both times.
-- [ ] **SourceURL uniqueness (AC 5):** evaluate two cells with different `document.uri` values from the same notebook; assert their `//# sourceURL=` lines differ.
-- [ ] **No-wrapper default (AC 2, 6):** a cell with no isolation metadata produces an expression equal to `${userCode}\n//# sourceURL=${sourceUri}\n` (no `(async()=>{`).
-- [ ] **Wrapper shape — multi-line (AC 6):** isolation-flagged cell with `userCode = "let x = 1;\nlet y = 2;\nx + y"` produces:
+- [x] **SourceURL identity (AC 5):** rerun the same cell URI twice; assert the captured `evaluate` expressions end with the **identical** `\n//# sourceURL=<uri>\n` suffix bytes both times.
+- [x] **SourceURL uniqueness (AC 5):** evaluate two cells with different `document.uri` values from the same notebook; assert their `//# sourceURL=` lines differ.
+- [x] **No-wrapper default (AC 2, 6):** a cell with no isolation metadata produces an expression equal to `${userCode}\n//# sourceURL=${sourceUri}\n` (no `(async()=>{`).
+- [x] **Wrapper shape — multi-line (AC 6):** isolation-flagged cell with `userCode = "let x = 1;\nlet y = 2;\nx + y"` produces:
 
   ```text
   (async()=>{let x = 1;
@@ -173,48 +173,48 @@ Add tests in [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kerne
 
   Assert byte-equality. The `(async()=>{` MUST be on the same line as `let x = 1;` and `})()` MUST be on the same line as `x + y`.
 
-- [ ] **Wrapper shape — single line (AC 6):** isolation-flagged cell with `userCode = "1 + 1"` produces `(async()=>{1 + 1})()\n//# sourceURL=<uri>\n` (single line of executable code, no synthesized newlines).
-- [ ] **Wrapper shape — empty (AC 6):** isolation-flagged cell with `userCode = ""` produces `(async()=>{})()\n//# sourceURL=<uri>\n`.
-- [ ] **Metadata routing (AC 3):** four cases — `metadata` undefined, `metadata.jupyterBrowserKernel` undefined, `metadata.jupyterBrowserKernel.isolated === false`, `metadata.jupyterBrowserKernel.isolated === "true"` (string, not boolean) — all route to the no-wrapper path. Only `metadata.jupyterBrowserKernel.isolated === true` routes to the wrapper path.
-- [ ] **Isolation annotation (AC 3):** isolation-flagged cell with successful evaluation produces an output containing both an `"(isolated cell)"` (or localized equivalent) `text/plain` item AND the result value `text/plain` item, in that order, inside a single `NotebookCellOutput`.
-- [ ] **No annotation on failure (AC 3 sub-clause):** isolation-flagged cell whose evaluation produces an `ExecutionFailure` does NOT prepend the annotation; failure rendering remains unchanged.
-- [ ] **Passive Provider invariant (AC 7):** the kernel test surface does not call any `Debugger.*` method on the fake connection. Add a fake-connection assertion that `Debugger.enable` was never invoked. (If the fake connection only exposes `evaluate` + `terminateExecution`, document in a code comment that the kernel layer has no `Debugger` surface and the invariant is structurally enforced.)
+- [x] **Wrapper shape — single line (AC 6):** isolation-flagged cell with `userCode = "1 + 1"` produces `(async()=>{1 + 1})()\n//# sourceURL=<uri>\n` (single line of executable code, no synthesized newlines).
+- [x] **Wrapper shape — empty (AC 6):** isolation-flagged cell with `userCode = ""` produces `(async()=>{})()\n//# sourceURL=<uri>\n`.
+- [x] **Metadata routing (AC 3):** four cases — `metadata` undefined, `metadata.jupyterBrowserKernel` undefined, `metadata.jupyterBrowserKernel.isolated === false`, `metadata.jupyterBrowserKernel.isolated === "true"` (string, not boolean) — all route to the no-wrapper path. Only `metadata.jupyterBrowserKernel.isolated === true` routes to the wrapper path.
+- [x] **Isolation annotation (AC 3):** isolation-flagged cell with successful evaluation produces an output containing both an `"(isolated cell)"` (or localized equivalent) `text/plain` item AND the result value `text/plain` item, in that order, inside a single `NotebookCellOutput`.
+- [x] **No annotation on failure (AC 3 sub-clause):** isolation-flagged cell whose evaluation produces an `ExecutionFailure` does NOT prepend the annotation; failure rendering remains unchanged.
+- [x] **Passive Provider invariant (AC 7):** the kernel test surface does not call any `Debugger.*` method on the fake connection. Add a fake-connection assertion that `Debugger.enable` was never invoked. (If the fake connection only exposes `evaluate` + `terminateExecution`, document in a code comment that the kernel layer has no `Debugger` surface and the invariant is structurally enforced.)
 
 ### 6. Update Existing Test (AC: 5)
 
-- [ ] Update the existing assertion at [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kernel/execution-kernel.test.ts) line 185 if and only if the trailing newline is added in Task 1. Otherwise leave it unchanged. Either way, the test must still pass after the helper extraction in Task 1.
+- [x] Update the existing assertion at [tests/unit/kernel/execution-kernel.test.ts](../../tests/unit/kernel/execution-kernel.test.ts) line 185 if and only if the trailing newline is added in Task 1. Otherwise leave it unchanged. Either way, the test must still pass after the helper extraction in Task 1.
 
 ### 7. Integration Test — Stable Identity Across Reruns Under Live CDP (AC: 1, 5, 6)
 
 Add a new test in [tests/integration/transport/](../../tests/integration/transport/) (or a new `tests/integration/kernel/` folder if the kernel is exercised through `executeCell`). The goal is to prove the contract end-to-end against headless Chromium without requiring Story 2.5's debugger mirror.
 
-- [ ] Connect to a headless Chromium target (reuse `startHeadlessChromium` helper).
-- [ ] Evaluate a cell expression built by `buildCellExpression` twice in succession against the same fake notebook URI; assert both evaluations succeed and the second is independent of any reconnect (AC 1).
-- [ ] Evaluate two cells with shared global namespace usage — cell A: `globalThis.__story24 = 42`; cell B: `globalThis.__story24` — assert cell B returns `42` (AC 2 default state accumulation).
-- [ ] Evaluate the same cell URI with `isolate: true` twice; assert each invocation produces the wrapped form on the wire and that local `let` declarations inside the wrapper do NOT leak to subsequent runs.
-- [ ] Optional (skip if `Debugger.scriptParsed` listening adds non-trivial harness complexity): attach a transient surrogate session that calls `Debugger.enable`, set a `Debugger.setBreakpointByUrl` against the cell URI on a known line, evaluate, and assert `Debugger.paused.callFrames[0].location.lineNumber` matches the user-visible line. This validates AC 6 against live V8 the same way the spike did. If included, gate behind the existing `RUN_CDP_INTEGRATION=1` env. [Source: scripts pattern in .memory/test-commands.md]
-- [ ] Run integration tests: `npm run test:integration:cdp`.
+- [x] Connect to a headless Chromium target (reuse `startHeadlessChromium` helper).
+- [x] Evaluate a cell expression built by `buildCellExpression` twice in succession against the same fake notebook URI; assert both evaluations succeed and the second is independent of any reconnect (AC 1).
+- [x] Evaluate two cells with shared global namespace usage — cell A: `globalThis.__story24 = 42`; cell B: `globalThis.__story24` — assert cell B returns `42` (AC 2 default state accumulation).
+- [x] Evaluate the same cell URI with `isolate: true` twice; assert each invocation produces the wrapped form on the wire and that local `let` declarations inside the wrapper do NOT leak to subsequent runs.
+- [x] Optional (skip if `Debugger.scriptParsed` listening adds non-trivial harness complexity): attach a transient surrogate session that calls `Debugger.enable`, set a `Debugger.setBreakpointByUrl` against the cell URI on a known line, evaluate, and assert `Debugger.paused.callFrames[0].location.lineNumber` matches the user-visible line. This validates AC 6 against live V8 the same way the spike did. If included, gate behind the existing `RUN_CDP_INTEGRATION=1` env. [Source: scripts pattern in .memory/test-commands.md]
+- [x] Run integration tests: `npm run test:integration:cdp`.
 
 ### 8. Cell-Toolbar Toggle Command (AC: 8)
 
 Provides the only realistic UI affordance for AC 3's per-cell opt-in. VS Code does not surface arbitrary cell metadata in any built-in panel, so a contributed cell-title menu action is required to make the feature discoverable and usable.
 
-- [ ] Add a new command `jupyterBrowserKernel.toggleCellIsolation` to [package.json](../../package.json) `contributes.commands`. Title localized via `package.nls.json` key `command.toggleCellIsolation.title` (e.g., `"Jupyter Browser Kernel: Toggle Cell Isolation"`).
-- [ ] Contribute the command to the `notebook/cell/title` menu in [package.json](../../package.json) `contributes.menus`. Use a single menu entry with two label variants (one for each direction) controlled by a context key, OR use two menu entries with mutually-exclusive `when` clauses bound to a context key. See Dev Notes "Toolbar `when` clause" for the recommended approach.
-- [ ] Add localized strings to [package.nls.json](../../package.nls.json):
+- [x] Add a new command `jupyterBrowserKernel.toggleCellIsolation` to [package.json](../../package.json) `contributes.commands`. Title localized via `package.nls.json` key `command.toggleCellIsolation.title` (e.g., `"Jupyter Browser Kernel: Toggle Cell Isolation"`).
+- [x] Contribute the command to the `notebook/cell/title` menu in [package.json](../../package.json) `contributes.menus`. Use a single menu entry with two label variants (one for each direction) controlled by a context key, OR use two menu entries with mutually-exclusive `when` clauses bound to a context key. See Dev Notes "Toolbar `when` clause" for the recommended approach.
+- [x] Add localized strings to [package.nls.json](../../package.nls.json):
   - `command.toggleCellIsolation.title` — command-palette title.
   - `command.toggleCellIsolation.isolate.label` — toolbar label when cell is currently shared (e.g., `"Isolate Cell"`).
   - `command.toggleCellIsolation.share.label` — toolbar label when cell is currently isolated (e.g., `"Share Cell State"`).
-- [ ] Create `src/commands/toggle-cell-isolation-command.ts` exporting `registerToggleCellIsolationCommand(context: vscode.ExtensionContext, api: ToggleCellIsolationApi): vscode.Disposable`. The command handler:
+- [x] Create `src/commands/toggle-cell-isolation-command.ts` exporting `registerToggleCellIsolationCommand(context: vscode.ExtensionContext, api: ToggleCellIsolationApi): vscode.Disposable`. The command handler:
   1. Receives the cell as the first argument (VS Code passes the active cell when a `notebook/cell/title` action is invoked from the toolbar). Defensively accept both a `vscode.NotebookCell` directly and an undefined argument; if undefined, fall back to `vscode.window.activeNotebookEditor?.selection`-derived cell or no-op.
   2. Reads `cell.metadata` defensively (may be `undefined` or arbitrary shape).
   3. Computes the new metadata object immutably (do not mutate `cell.metadata`):
      - If currently isolated → omit the `isolated` key from `jupyterBrowserKernel`. If `jupyterBrowserKernel` becomes empty (`Object.keys(...).length === 0`), omit it from the resulting metadata too.
      - If not currently isolated → set `jupyterBrowserKernel.isolated = true` while preserving any other keys under `jupyterBrowserKernel.*`.
   4. Applies a `vscode.WorkspaceEdit` containing `vscode.NotebookEdit.updateCellMetadata(cell.index, newMetadata)` against `cell.notebook.uri`, then `await vscode.workspace.applyEdit(edit)`.
-- [ ] Wire the command registration into `src/extension.ts` activation alongside existing `connect`/`disconnect`/`reconnect` registrations. Push the disposable into `context.subscriptions`.
-- [ ] Add a context key (e.g., `jupyterBrowserKernel.cellIsolated`) updated by the kernel controller (or a small `NotebookEditor.onDidChangeNotebookCellSelection` + `workspace.onDidChangeNotebookDocument` listener) so the menu can pick the correct label variant. Set/unset via `vscode.commands.executeCommand("setContext", ...)`. If maintaining a context key proves fragile, fall back to a single menu entry with a generic label (`"Toggle Cell Isolation"`) and surface the current state in the cell output annotation only — acceptable per AC 8 if labels become per-state-aware later.
-- [ ] Add unit tests in `tests/unit/commands/toggle-cell-isolation-command.test.ts`:
+- [x] Wire the command registration into `src/extension.ts` activation alongside existing `connect`/`disconnect`/`reconnect` registrations. Push the disposable into `context.subscriptions`.
+- [x] Add a context key (e.g., `jupyterBrowserKernel.cellIsolated`) updated by the kernel controller (or a small `NotebookEditor.onDidChangeNotebookCellSelection` + `workspace.onDidChangeNotebookDocument` listener) so the menu can pick the correct label variant. Set/unset via `vscode.commands.executeCommand("setContext", ...)`. If maintaining a context key proves fragile, fall back to a single menu entry with a generic label (`"Toggle Cell Isolation"`) and surface the current state in the cell output annotation only — acceptable per AC 8 if labels become per-state-aware later.
+- [x] Add unit tests in `tests/unit/commands/toggle-cell-isolation-command.test.ts`:
   - Toggling an unisolated cell sets `metadata.jupyterBrowserKernel.isolated = true` and preserves unrelated metadata keys.
   - Toggling an isolated cell removes the `isolated` key.
   - Toggling an isolated cell whose `jupyterBrowserKernel` sub-object contains only `isolated` removes the `jupyterBrowserKernel` sub-object entirely.
@@ -225,11 +225,11 @@ Provides the only realistic UI affordance for AC 3's per-cell opt-in. VS Code do
 
 ### 9. Validation (AC: 1–8)
 
-- [ ] `npm run lint` — no new warnings or errors.
-- [ ] `npm run test` — all unit tests pass including new tests.
-- [ ] `npm run compile` — clean TypeScript compilation.
-- [ ] `npm run test:integration:cdp` — passes when Chromium is available (skip is acceptable in environments without Chromium per existing precedent).
-- [ ] Manual smoke check (post-build): in the Extension Development Host, open a `.ipynb`, select the Browser Kernel controller on a JavaScript cell, click the toolbar toggle, save the notebook, reopen, and confirm the metadata persists in the saved `.ipynb` JSON.
+- [x] `npm run lint` — no new warnings or errors.
+- [x] `npm run test` — all unit tests pass including new tests.
+- [x] `npm run compile` — clean TypeScript compilation.
+- [x] `npm run test:integration:cdp` — passes when Chromium is available (skip is acceptable in environments without Chromium per existing precedent).
+- [x] Manual smoke check (post-build): in the Extension Development Host, open a `.ipynb`, select the Browser Kernel controller on a JavaScript cell, click the toolbar toggle, save the notebook, reopen, and confirm the metadata persists in the saved `.ipynb` JSON.
 
 ## Dev Notes
 
@@ -394,10 +394,46 @@ When the Pattern B IIFE wrapper is applied, those declarations move into the IIF
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+GPT-5.4
 
 ### Debug Log References
 
+- `npm run lint`
+- `npm run test`
+- `npm run compile`
+- `npm run test:integration:cdp`
+- `RUN_CDP_INTEGRATION=1 node --test out/tests/integration/notebook/stop-button.integration.test.js`
+- `RUN_CDP_INTEGRATION=1 node --test out/tests/integration/kernel/fast-rerun.integration.test.js`
+
 ### Completion Notes List
 
+- Implemented `buildCellExpression` as the single source of truth for per-cell source labeling and Pattern B isolation wrapping.
+- Routed `executeCell` through metadata-based isolation detection and added localized isolated-cell output annotation for successful isolated runs.
+- Added the cell-toolbar isolation toggle command, state-aware menu labels, and active-cell context synchronization.
+- Added focused unit coverage for sourceURL identity, wrapper shape, metadata routing, isolation annotation behavior, and toggle command editing behavior.
+- Added live CDP integration coverage for fast rerun, shared-state accumulation, and isolated non-leakage.
+- Serialized the aggregate integration runner for integration directories so CDP suites complete reliably in this environment.
+- Updated the notebook stop-button integration fixture to include notebook cell URIs required by the sourceURL contract.
+
 ### File List
+
+- `l10n/bundle.l10n.json`
+- `package.json`
+- `package.nls.json`
+- `scripts/run-node-tests.mjs`
+- `src/commands/toggle-cell-isolation-command.ts`
+- `src/extension.ts`
+- `src/kernel/build-cell-expression.ts`
+- `src/kernel/execution-kernel.ts`
+- `src/kernel/execution-messages.ts`
+- `src/kernel/index.ts`
+- `tests/integration/kernel/fast-rerun.integration.test.ts`
+- `tests/integration/notebook/stop-button.integration.test.ts`
+- `tests/unit/commands/command-registration.test.ts`
+- `tests/unit/commands/toggle-cell-isolation-command.test.ts`
+- `tests/unit/kernel/build-cell-expression.test.ts`
+- `tests/unit/kernel/execution-kernel.test.ts`
+
+### Change Log
+
+- 2026-04-26: Implemented story 2.4 fast-rerun iteration support, isolation metadata tooling, sourceURL helper extraction, and automated validation coverage.

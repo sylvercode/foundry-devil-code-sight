@@ -75,3 +75,7 @@ export function getKernelFailureCategoryLabel(
 
   return localize("transport error");
 }
+
+export function getIsolationAnnotationMessage(localize: Localize): string {
+  return localize("(isolated cell)");
+}

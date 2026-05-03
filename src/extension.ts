@@ -24,6 +24,10 @@ import { createKernelTransportFailureReporter } from "./logging/kernel-transport
 import { createConnectionStatusIndicator } from "./ui/connection-status-indicator";
 import { disconnectActiveBrowserConnection } from "./transport/browser-connect";
 import { registerKernelController } from "./notebook";
+import { registerToggleCellIsolationCommand } from "./commands/toggle-cell-isolation-command";
+
+const ACTIVE_NOTEBOOK_USES_BROWSER_KERNEL_CONTEXT_KEY =
+  "jupyterBrowserKernel.activeNotebookUsesBrowserKernel";
 
 type SubscriptionInfo<T> = {
   command: string;
@@ -106,6 +110,51 @@ export function activate(context: vscode.ExtensionContext): void {
     onTransportError: reportKernelTransportFailure,
   });
   context.subscriptions.push(kernelController);
+
+  const selectedNotebookUris = new Set<string>();
+  const syncActiveNotebookKernelContext = (): void => {
+    const activeNotebookUri =
+      vscode.window.activeNotebookEditor?.notebook.uri.toString();
+    const activeUsesBrowserKernel =
+      typeof activeNotebookUri === "string" &&
+      selectedNotebookUris.has(activeNotebookUri);
+
+    void vscode.commands.executeCommand(
+      "setContext",
+      ACTIVE_NOTEBOOK_USES_BROWSER_KERNEL_CONTEXT_KEY,
+      activeUsesBrowserKernel,
+    );
+  };
+
+  syncActiveNotebookKernelContext();
+
+  context.subscriptions.push(
+    kernelController.onDidChangeSelectedNotebooks(({ notebook, selected }) => {
+      const notebookUri = notebook.uri.toString();
+
+      if (selected) {
+        selectedNotebookUris.add(notebookUri);
+      } else {
+        selectedNotebookUris.delete(notebookUri);
+      }
+
+      syncActiveNotebookKernelContext();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveNotebookEditor(() => {
+      syncActiveNotebookKernelContext();
+    }),
+  );
+
+  registerToggleCellIsolationCommand(context, {
+    commands: vscode.commands,
+    workspace: vscode.workspace,
+    window: vscode.window,
+    NotebookEdit: vscode.NotebookEdit,
+    WorkspaceEdit: vscode.WorkspaceEdit,
+  });
 }
 
 export function deactivate(): Promise<void> {
