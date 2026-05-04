@@ -2,7 +2,7 @@
 storyId: "2.4"
 storyKey: "2-4-support-fast-rerun-and-iteration-patterns"
 title: "Support Fast Rerun and Iteration Patterns"
-status: "review"
+status: "done"
 created: "2026-04-26"
 epic: "2"
 priority: "p0"
@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 2.4: Support Fast Rerun and Iteration Patterns
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -389,6 +389,15 @@ When the Pattern B IIFE wrapper is applied, those declarations move into the IIF
 - [Source: docs/stories/breakpoint-correct-course-prompt.md] — context for FR38 introduction
 - [Source: .github/copilot-instructions.md] — coding standards and stable technical constraints
 - [Source: .memory/cdp-eval-notes.md] — repo memory: `replMode` rationale and sourceURL contract
+
+### Review Findings
+
+Code review run 2026-05-03 against `main`. All four `patch` candidates were reviewed by the user and dismissed as intentional deviations from the original spec. Recorded here for traceability:
+
+- [x] [Review][Dismiss] Isolation annotation uses two `NotebookCellOutput` containers instead of one with two items [src/kernel/execution-kernel.ts:243] — **Kept by design.** User prefers two separate outputs over the single-container shape originally specified in Task 3 / "What NOT to Do".
+- [x] [Review][Dismiss] Wrapper prefix is `await (async()=>{` instead of bare Pattern B `(async()=>{` [src/kernel/build-cell-expression.ts:14] — **`await` is required.** Bare Pattern B did not work in practice; the outer `await` is necessary even with `Runtime.evaluate({ awaitPromise: true })`. Tests at [tests/unit/kernel/build-cell-expression.test.ts:21](../../tests/unit/kernel/build-cell-expression.test.ts#L21) and [tests/unit/kernel/execution-kernel.test.ts:768](../../tests/unit/kernel/execution-kernel.test.ts#L768) correctly lock in the as-built shape.
+- [x] [Review][Dismiss] Menu `when` clauses filter by `notebookCellType == 'code'` instead of `cellLangId == 'javascript'` [package.json:62] — **Acceptable.** The extension is JavaScript-only, so the broader code-cell filter is good enough; `cellLangId` was found to be unreliable in practice.
+- [x] [Review][Dismiss] `buildCellExpression` preserves a trailing newline in `userCode`, placing `})()` on its own line [src/kernel/build-cell-expression.ts:23] — **Intentional.** User-authored trailing whitespace is preserved as-is; the kernel does not silently strip it.
 
 ## Dev Agent Record
 
