@@ -119,11 +119,13 @@ function createExecutionRecorder(options?: {
 function createFakeCell(
   text: string,
   sourceUri: string = DEFAULT_FAKE_CELL_URI,
+  metadata?: unknown,
 ): {
   document: {
     getText: () => string;
     uri: { toString: () => string };
   };
+  metadata?: unknown;
 } {
   return {
     document: {
@@ -132,6 +134,7 @@ function createFakeCell(
         toString: () => sourceUri,
       },
     },
+    metadata,
   };
 }
 
@@ -182,7 +185,7 @@ test("executeCell evaluates expression and writes success output", async () => {
     runtime,
   });
 
-  assert.deepEqual(evaluateCalls, [`2 + 2\n//# sourceURL=${sourceUri}`]);
+  assert.deepEqual(evaluateCalls, [`2 + 2\n//# sourceURL=${sourceUri}\n`]);
   assert.equal(notebookExecution.executionOrder, 7);
   assert.equal(execution.success, true);
   assert.equal(execution.outputs.length, 1);
@@ -632,4 +635,274 @@ test("executeCell classifies transport-thrown timeout error as timeout kind with
   assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
   assert.match(String(execution.outputs[0]?.items[0]?.value), /timed out/i);
   assert.deepEqual(reportedFailures, ["timeout"]);
+});
+
+test("executeCell keeps sourceURL bytes stable across reruns of the same cell", async () => {
+  const sourceUri =
+    "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/test1.ipynb#ch0000000000999";
+  const evaluateCalls: string[] = [];
+  const connection = createFakeConnection(async (expression) => {
+    evaluateCalls.push(expression);
+    return {
+      result: {
+        type: "number",
+        value: 3,
+      },
+    } as never;
+  });
+
+  const { notebookExecution } = createExecutionRecorder();
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  const cell = createFakeCell("1 + 2", sourceUri) as never;
+
+  await executeCell({
+    cell,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 10,
+    runtime,
+  });
+
+  await executeCell({
+    cell,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 11,
+    runtime,
+  });
+
+  assert.equal(evaluateCalls.length, 2);
+  assert.equal(evaluateCalls[0], evaluateCalls[1]);
+  assert.match(String(evaluateCalls[0]), new RegExp(`${sourceUri}\\n$`));
+});
+
+test("executeCell assigns unique sourceURL bytes for distinct cell URIs", async () => {
+  const uriA =
+    "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/test1.ipynb#ch0000000000101";
+  const uriB =
+    "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/test1.ipynb#ch0000000000102";
+  const evaluateCalls: string[] = [];
+  const connection = createFakeConnection(async (expression) => {
+    evaluateCalls.push(expression);
+    return {
+      result: {
+        type: "number",
+        value: 1,
+      },
+    } as never;
+  });
+
+  const { notebookExecution } = createExecutionRecorder();
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  await executeCell({
+    cell: createFakeCell("1", uriA) as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 12,
+    runtime,
+  });
+
+  await executeCell({
+    cell: createFakeCell("1", uriB) as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 13,
+    runtime,
+  });
+
+  assert.equal(evaluateCalls.length, 2);
+  assert.notEqual(evaluateCalls[0], evaluateCalls[1]);
+  assert.match(String(evaluateCalls[0]), new RegExp(`sourceURL=${uriA}`));
+  assert.match(String(evaluateCalls[1]), new RegExp(`sourceURL=${uriB}`));
+});
+
+test("executeCell routes metadata cases to wrapper only when isolated is boolean true", async () => {
+  const evaluateCalls: string[] = [];
+  const connection = createFakeConnection(async (expression) => {
+    evaluateCalls.push(expression);
+    return {
+      result: {
+        type: "number",
+        value: 2,
+      },
+    } as never;
+  });
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+  const metadataCases: unknown[] = [
+    undefined,
+    {},
+    { jupyterBrowserKernel: { isolated: false } },
+    { jupyterBrowserKernel: { isolated: "true" } },
+    { jupyterBrowserKernel: { isolated: true } },
+  ];
+
+  for (const [index, metadata] of metadataCases.entries()) {
+    const { notebookExecution } = createExecutionRecorder();
+    await executeCell({
+      cell: createFakeCell("1 + 1", undefined, metadata) as never,
+      controller: {
+        createNotebookCellExecution: () => notebookExecution,
+      } as never,
+      executionOrder: 20 + index,
+      runtime,
+    });
+  }
+
+  assert.equal(evaluateCalls.length, 5);
+  assert.equal(evaluateCalls[0]?.startsWith("(async()=>{"), false);
+  assert.equal(evaluateCalls[1]?.startsWith("(async()=>{"), false);
+  assert.equal(evaluateCalls[2]?.startsWith("(async()=>{"), false);
+  assert.equal(evaluateCalls[3]?.startsWith("(async()=>{"), false);
+  assert.equal(evaluateCalls[4]?.startsWith("await (async()=>{"), true);
+});
+
+test("executeCell prepends isolated annotation as a separate rendered output", async () => {
+  const connection = createFakeConnection(async () => {
+    return {
+      result: {
+        type: "number",
+        value: 7,
+      },
+    } as never;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  await executeCell({
+    cell: createFakeCell("3 + 4", DEFAULT_FAKE_CELL_URI, {
+      jupyterBrowserKernel: { isolated: true },
+    }) as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 30,
+    runtime,
+  });
+
+  assert.equal(execution.success, true);
+  assert.equal(execution.outputs.length, 2);
+  assert.equal(execution.outputs[0]?.items.length, 1);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "text");
+  assert.equal(execution.outputs[0]?.items[0]?.value, "(isolated cell)");
+  assert.equal(execution.outputs[1]?.items.length, 1);
+  assert.equal(execution.outputs[1]?.items[0]?.kind, "text");
+  assert.equal(execution.outputs[1]?.items[0]?.value, "7");
+});
+
+test("executeCell does not prepend isolated annotation for failure outputs", async () => {
+  const connection = createFakeConnection(async () => {
+    return {
+      result: {
+        type: "undefined",
+      },
+      exceptionDetails: {
+        text: "Uncaught TypeError: boom",
+        exception: {
+          className: "TypeError",
+          description: "TypeError: boom\n    at <anonymous>:1:1",
+        },
+      },
+    } as never;
+  });
+
+  const { execution, notebookExecution } = createExecutionRecorder();
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection,
+  );
+
+  await executeCell({
+    cell: createFakeCell("throw new TypeError('boom')", DEFAULT_FAKE_CELL_URI, {
+      jupyterBrowserKernel: { isolated: true },
+    }) as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 31,
+    runtime,
+  });
+
+  assert.equal(execution.success, false);
+  assert.equal(execution.outputs.length, 1);
+  assert.equal(execution.outputs[0]?.items.length, 1);
+  assert.equal(execution.outputs[0]?.items[0]?.kind, "error");
+});
+
+test("executeCell kernel path never invokes Debugger APIs (passive provider)", async () => {
+  let debuggerEnableCalls = 0;
+  const connection = {
+    ...createFakeConnection(async () => {
+      return {
+        result: {
+          type: "number",
+          value: 1,
+        },
+      } as never;
+    }),
+    Debugger: {
+      enable: async () => {
+        debuggerEnableCalls += 1;
+      },
+    },
+  };
+
+  const { notebookExecution } = createExecutionRecorder();
+  const runtime = createKernelRuntime(
+    {
+      NotebookCellOutput: FakeNotebookCellOutput as never,
+      NotebookCellOutputItem: FakeNotebookCellOutputItem as never,
+    },
+    createLocalizeMock(),
+    () => connection as never,
+  );
+
+  await executeCell({
+    cell: createFakeCell("1") as never,
+    controller: {
+      createNotebookCellExecution: () => notebookExecution,
+    } as never,
+    executionOrder: 40,
+    runtime,
+  });
+
+  assert.equal(debuggerEnableCalls, 0);
 });

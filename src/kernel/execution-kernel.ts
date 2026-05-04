@@ -13,8 +13,10 @@ import {
 } from "./execution-result";
 import {
   getKernelFailureCellOutputMessage,
+  getIsolationAnnotationMessage,
   getNoActiveSessionMessage,
 } from "./execution-messages";
+import { buildCellExpression } from "./build-cell-expression";
 
 export interface NotebookOutputApi {
   NotebookCellOutput: typeof vscode.NotebookCellOutput;
@@ -43,6 +45,12 @@ export interface ExecuteCellRequest {
   controller: vscode.NotebookController;
   executionOrder: number;
   runtime: KernelRuntime;
+}
+
+interface KernelCellMetadata {
+  jupyterBrowserKernel?: {
+    isolated?: boolean;
+  };
 }
 
 export function createKernelRuntime(
@@ -99,8 +107,10 @@ export async function executeCell({
       return false;
     }
 
-    const expression = cell.document.getText();
-    const sourceUriStr = cell.document.uri.toString();
+    const userCode = cell.document.getText();
+    const sourceUri = cell.document.uri.toString();
+    const isolate = readIsolationMetadata(cell.metadata);
+    const expression = buildCellExpression(userCode, sourceUri, { isolate });
     let resolveCancellationSignal: (() => void) | undefined;
     const cancellationSignal = new Promise<void>((resolve) => {
       resolveCancellationSignal = resolve;
@@ -112,11 +122,7 @@ export async function executeCell({
       resolveCancellationSignal?.();
     });
 
-    const evaluationPromise = evaluateCellExpression(
-      connection,
-      expression,
-      sourceUriStr,
-    );
+    const evaluationPromise = evaluateCellExpression(connection, expression);
     const completion: EvaluationCompletion = await Promise.race([
       evaluationPromise.then(
         (result): EvaluationCompletion => ({ kind: "result", result }),
@@ -145,6 +151,8 @@ export async function executeCell({
         execution,
         renderedValue,
         runtime.notebookOutputApi,
+        runtime.localize,
+        isolate,
       );
       endExecution(true);
       return false;
@@ -208,35 +216,50 @@ function reportFailureAsync(
 async function evaluateCellExpression(
   connection: ActiveBrowserConnection,
   expression: string,
-  sourceUri: string,
 ): Promise<ExecutionResult> {
   try {
-    const expressionWithLabel = addSourceLabeling(expression, sourceUri);
-    const rawResponse = await connection.evaluate(expressionWithLabel);
+    const rawResponse = await connection.evaluate(expression);
     return normalizeEvaluationResult(rawResponse);
   } catch (error) {
     return normalizeTransportError(error);
   }
 }
 
-function addSourceLabeling(expression: string, sourceUri: string): string {
-  // Adding a sourceURL label to the expression allows browser devtools to
-  // associate the evaluated code with a "file",
-  // which can improve debugging and error stack traces.
-  const sourceLabel = `//# sourceURL=${sourceUri}`;
-  return `${expression}\n${sourceLabel}`;
+function readIsolationMetadata(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== "object") {
+    return false;
+  }
+
+  const typedMetadata = metadata as KernelCellMetadata;
+  return typedMetadata.jupyterBrowserKernel?.isolated === true;
 }
 
 async function writeSuccessOutput(
   execution: vscode.NotebookCellExecution,
   value: string,
   notebookOutputApi: NotebookOutputApi,
+  localize: Localize,
+  isIsolated: boolean,
 ): Promise<void> {
-  await execution.replaceOutput([
-    new notebookOutputApi.NotebookCellOutput([
-      notebookOutputApi.NotebookCellOutputItem.text(value, "text/plain"),
-    ]),
-  ]);
+  const outputs = isIsolated
+    ? [
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(
+            getIsolationAnnotationMessage(localize),
+            "text/plain",
+          ),
+        ]),
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(value, "text/plain"),
+        ]),
+      ]
+    : [
+        new notebookOutputApi.NotebookCellOutput([
+          notebookOutputApi.NotebookCellOutputItem.text(value, "text/plain"),
+        ]),
+      ];
+
+  await execution.replaceOutput(outputs);
 }
 
 async function writeFailureOutput(

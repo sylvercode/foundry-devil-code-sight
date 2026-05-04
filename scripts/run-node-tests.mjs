@@ -36,7 +36,12 @@ if (testFiles.length === 0) {
     process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ['--test', ...testFiles], {
+const isIntegrationRun = targetDirectory.split(path.sep).includes('integration');
+const nodeTestArgs = isIntegrationRun
+    ? ['--test', '--test-concurrency=1', ...testFiles]
+    : ['--test', ...testFiles];
+
+const result = spawnSync(process.execPath, nodeTestArgs, {
     stdio: 'inherit'
 });
 

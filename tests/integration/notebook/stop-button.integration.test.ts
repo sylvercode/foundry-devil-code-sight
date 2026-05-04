@@ -232,11 +232,19 @@ test(
           document: {
             getText: () =>
               "(() => { const start = Date.now(); while (Date.now() - start < 60000) {} return 'late'; })()",
+            uri: {
+              toString: () =>
+                "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/stop-button.ipynb#ch0000000000001",
+            },
           },
         },
         {
           document: {
             getText: () => "6 * 7",
+            uri: {
+              toString: () =>
+                "vscode-notebook-cell://test-authority/workspaces/foundry-devil-code-sight/tests/files/stop-button.ipynb#ch0000000000002",
+            },
           },
         },
       ] as never,

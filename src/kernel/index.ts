@@ -14,3 +14,8 @@ export {
   type ExecutionResult,
   type ExecutionSuccess,
 } from "./execution-result";
+
+export {
+  buildCellExpression,
+  type BuildCellExpressionOptions,
+} from "./build-cell-expression";
