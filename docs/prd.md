@@ -73,6 +73,8 @@ editHistory:
     changes: Added FR38 establishing source-level breakpoint debugging as a core kernel MVP capability and updated J1 traceability to cover it.
   - date: 2026-05-11
     changes: Added FR39 for post-MVP full VS Code native notebook-cell debugging and linked it to a new post-MVP core epic.
+  - date: 2026-05-11
+    changes: Follow-up PRD validation fixes: moved FR39 into a dedicated post-MVP core debugging subsection, extended J4 traceability to include FR39, added measurable debug-session coexistence NFR coverage, and standardized post-MVP core FR labels.
 ---
 
 # Product Requirements Document - jupyter-browser-kernel
@@ -491,9 +493,9 @@ Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution
 
 #### Observation Extensions [Post-MVP Core]
 
-- FR24 [Post-MVP]: A user can define watched expressions and refresh them manually or after execution events.
-- FR25 [Post-MVP]: A user can configure depth-limited property projections and expand nested references for watched values.
-- FR26 [Post-MVP]: A user can continue refreshing other watched values when one watcher evaluation fails.
+- FR24 [Post-MVP Core]: A user can define watched expressions and refresh them manually or after execution events.
+- FR25 [Post-MVP Core]: A user can configure depth-limited property projections and expand nested references for watched values.
+- FR26 [Post-MVP Core]: A user can continue refreshing other watched values when one watcher evaluation fails.
 
 ### Example Web-App Profile Requirements (Post-MVP, Foundry VTT)
 
@@ -518,8 +520,11 @@ Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution
 
 #### Core Parameterization Extension [Post-MVP Core]
 
-- FR37 [Post-MVP]: A user can define `$prompt()` substitution placeholders in a notebook cell so that execution pauses and requests a value for each placeholder before running.
-- FR39 [Post-MVP]: A user can start a VS Code debug session for notebook-cell execution and see breakpoint verification, paused-line highlighting, call stack, variables, and watch evaluation in native VS Code debug surfaces.
+- FR37 [Post-MVP Core]: A user can define `$prompt()` substitution placeholders in a notebook cell so that execution pauses and requests a value for each placeholder before running.
+
+#### Core Debugging Extensions [Post-MVP Core]
+
+- FR39 [Post-MVP Core]: A user can start a VS Code debug session for notebook-cell execution and see breakpoint verification, paused-line highlighting, call stack, variables, and watch evaluation in native VS Code debug surfaces.
 
 ## Non-Functional Requirements
 
@@ -558,6 +563,10 @@ Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution
 - NFR16: The extension must not persist sensitive runtime secrets from evaluated cells unless explicitly saved by user action, measured by file-system audit and settings-state verification after execution sessions.
 - NFR17: User-facing diagnostics must include actionable root-cause category and next-step guidance while excluding sensitive environment details such as tokens, credentials, and private paths, measured by diagnostic-message review against a defined redaction checklist.
 
+### Debugging Experience Reliability (Post-MVP Core)
+
+- NFR18 [Post-MVP Core]: A VS Code debug session for notebook-cell execution must coexist with browser DevTools attached to the same target without requiring forced detach for either client, measured by deterministic integration tests that verify adapter startup, breakpoint binding, paused-state inspection, stepping, and clean teardown while both clients remain responsive.
+
 ### Deferred Quality Improvements
 
 - Visual syntax error underlining in notebook cells remains deferred until the core execution and diagnostics loop is stable.
@@ -572,7 +581,7 @@ This table maps each user journey to the scope items, functional requirements, a
 | J1: Rapid Snippet Iteration           | Core 1–11                | FR1–FR18, FR22–FR23, FR38; post-MVP: FR24–FR26, FR37, FR39 | NFR1, NFR3, NFR5–9, NFR12–13 |
 | J2: Safe Experimentation and Reversal | Core 3–4, 10             | FR8–FR17, FR19–FR21; post-MVP: FR37            | NFR1, NFR3, NFR5–6           |
 | J3: Connection and Target Recovery    | Core 1–2, 4–5            | FR1–FR7                                        | NFR2, NFR4, NFR8–9           |
-| J4: Diagnosing Unexpected Behavior    | Core 2, 4, 7             | FR14–FR18; post-MVP: FR24–FR26                 | NFR3, NFR5–6, NFR8, NFR15–17 |
+| J4: Diagnosing Unexpected Behavior    | Core 2, 4, 7             | FR14–FR18; post-MVP: FR24–FR26, FR39           | NFR3, NFR5–6, NFR8, NFR15–18 |
 | J5: Adding an App Profile (Post-MVP)  | Profile scope (post-MVP) | FR27–FR36                                      | NFR10–11, NFR14              |
 
 ## Glossary

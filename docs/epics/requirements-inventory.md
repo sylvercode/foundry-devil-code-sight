@@ -25,9 +25,9 @@ FR20: A user can execute reversal cells to restore state after experiments.
 FR21: A user can iterate through at least two successive snippet versions in a single notebook session.
 FR22: A user can install and use the extension through a manual VS Code workflow without requiring Marketplace distribution.
 FR23: The extension can expose intentional script output through extension-owned runtime helpers providing intentional output capture, structured logging, and value inspection. Helper naming and calling conventions are architecture-scoped.
-FR24 [Post-MVP]: A user can define watched expressions and refresh them manually or after execution events.
-FR25 [Post-MVP]: A user can configure depth-limited property projections and expand nested references for watched values.
-FR26 [Post-MVP]: A user can continue refreshing other watched values when one watcher evaluation fails.
+FR24 [Post-MVP Core]: A user can define watched expressions and refresh them manually or after execution events.
+FR25 [Post-MVP Core]: A user can configure depth-limited property projections and expand nested references for watched values.
+FR26 [Post-MVP Core]: A user can continue refreshing other watched values when one watcher evaluation fails.
 FR27 [Post-MVP Foundry Profile]: The Foundry profile can identify valid execution targets using profile-owned matching rules.
 FR28 [Post-MVP Foundry Profile]: The Foundry profile execution path can rely on extension-owned runtime envelope and helper injection.
 FR29 [Post-MVP Foundry Profile]: The extension can inject a zero-boilerplate execution envelope that carries structured value and log output for each cell run.
@@ -60,6 +60,7 @@ NFR14: Any future profile must pass fixture-based target-matching and target-eli
 NFR15: The extension must connect only to explicitly user-configured endpoints.
 NFR16: The extension must not persist sensitive runtime secrets from evaluated cells unless explicitly saved by user action.
 NFR17: User-facing diagnostics must include actionable root-cause category and next-step guidance while excluding sensitive environment details.
+NFR18 [Post-MVP Core]: A VS Code debug session for notebook-cell execution must coexist with browser DevTools attached to the same target without requiring forced detach for either client, measured by deterministic integration tests that verify adapter startup, breakpoint binding, paused-state inspection, stepping, and clean teardown while both clients remain responsive.
 
 ## Additional Requirements
 
