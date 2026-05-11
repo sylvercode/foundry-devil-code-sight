@@ -28,6 +28,7 @@ inputDocuments:
   - docs/ux-spec/10-component-strategy.md
   - docs/ux-spec/11-ux-consistency-patterns.md
   - docs/ux-spec/12-responsive-design-accessibility.md
+  - docs/epics/epic-10-full-vscode-debugging-experience-post-mvp-core.md
 workflowType: architecture
 project_name: jupyter-browser-kernel
 user_name: Sylvercode
@@ -713,3 +714,120 @@ No critical or important validation issues were found that require architectural
 
 **First Implementation Priority:**
 npx --package yo --package generator-code -- yo code --extensionType ts --bundler esbuild --pkgManager npm --skipOpen
+
+## Epic 10 Addendum: Full VS Code Debugging Experience
+
+### Scope Alignment
+
+This addendum formalizes post-MVP core architecture decisions for FR39 and Epic 10 so notebook-cell debugging becomes a first-class VS Code-native experience through a dedicated DAP adapter while preserving existing CDP multiplexing and browser DevTools coexistence.
+
+### Architectural Decisions
+
+- Introduce a dedicated debug-adapter layer under core platform boundaries rather than embedding DAP concerns in notebook or transport modules.
+- Keep transport as the single owner of CDP session routing and browser attachment lifecycle; the DAP adapter consumes transport services, never bypasses them.
+- Use notebook-cell URI/source identity as the canonical breakpoint key, preserving stability across reruns.
+- Keep debugger pause ownership in VS Code debug UX for Epic 10 paths; do not mirror paused-state UI into notebook output channels.
+- Maintain deterministic event ordering contracts between runtime pause/resume events and DAP stopped/continued events.
+
+### New Module Boundaries
+
+Add a dedicated DAP boundary in source structure:
+
+- src/debug-adapter/
+  - debug-session-manager.ts (session bootstrap, teardown, reconnect-safe lifecycle)
+  - notebook-dap-adapter.ts (DAP request/response/event orchestration)
+  - breakpoint-registry.ts (editor breakpoint sync and runtime breakpoint mapping)
+  - stackframe-mapper.ts (runtime frame to notebook-cell source mapping)
+  - variable-store.ts (stable variable handles, scope paging, defensive expansion)
+  - stepping-controller.ts (continue/next/stepIn/stepOut command routing)
+  - pause-event-serializer.ts (deterministic ordering and dedupe)
+  - index.ts
+
+Integration rules:
+
+- src/notebook may request debug run lifecycle but must not implement DAP protocol details.
+- src/transport remains the only module issuing raw debugger-domain CDP commands.
+- src/debug-adapter must consume transport interfaces and shared normalized error helpers.
+
+### Story-to-Architecture Mapping
+
+Story 10.1 (bootstrap and teardown):
+
+- debug-session-manager owns adapter startup, failure diagnostics, and deterministic resource disposal.
+- session restart after stop must be explicit and idempotent.
+
+Story 10.2 (breakpoint verification and binding):
+
+- breakpoint-registry translates DAP setBreakpoints to runtime breakpoints using canonical notebook-cell source URLs.
+- verified breakpoint responses must include mapped runtime line confirmation.
+- stale runtime breakpoints are removed on every sync pass.
+
+Story 10.3 (stack/scopes/variables):
+
+- stackframe-mapper normalizes runtime frames to notebook-cell source coordinates.
+- variable-store issues stable integer handles and enforces bounded expansion behavior.
+- unsupported runtime values return explicit diagnostic placeholders, never adapter crashes.
+
+Story 10.4 (stepping and lifecycle sync):
+
+- stepping-controller maps DAP control requests to runtime debugger commands.
+- pause-event-serializer enforces ordered stopped and continued delivery to avoid duplicate/orphan VS Code states.
+
+Story 10.5 (dual-client coexistence):
+
+- multiplexed flat-session strategy remains mandatory and unchanged.
+- adapter must never force-detach peer debugger clients.
+- pause handling must avoid deadlock by ensuring adapter state transitions are non-blocking and resumable.
+
+### Runtime Contracts
+
+Debugger session contract:
+
+- One active DAP session per debug run target in extension scope.
+- Session startup either reaches ready state with verified breakpoints or fails loudly with actionable diagnostics.
+
+Breakpoint contract:
+
+- Canonical key: notebook cell source identity from sourceURL-compatible URI.
+- Line mapping must preserve user-visible line semantics despite wrapper code.
+- Breakpoint enable, disable, edit, and removal are idempotent operations.
+
+Pause/step contract:
+
+- Runtime paused events map to exactly one DAP stopped event.
+- Resume/step commands emit continued exactly once per transition.
+- Out-of-order runtime events are serialized before DAP emission.
+
+### Reliability and Testing Requirements
+
+Add Epic 10 test coverage domains:
+
+- tests/contract/debug-adapter/
+  - dap-session-contract.test.ts
+  - breakpoint-sync-contract.test.ts
+  - pause-ordering-contract.test.ts
+- tests/integration/debugger-flow/
+  - bootstrap-teardown.integration.test.ts
+  - breakpoint-hit-and-step.integration.test.ts
+  - dual-client-coexistence.integration.test.ts
+
+Required deterministic scenarios:
+
+- adapter startup failure diagnostics
+- breakpoint verify and rebind on cell edits
+- stackframe and variable expansion on pause
+- continue/stepIn/stepOut/next ordering
+- VS Code + DevTools concurrent attach and stepping
+
+### Risks and Mitigations
+
+- Risk: line mapping drift from execution wrappers.
+  - Mitigation: centralize mapping in stackframe-mapper and validate with fixture-based line-accuracy tests.
+- Risk: duplicate stopped states from burst pause events.
+  - Mitigation: pause-event-serializer with sequence guards and dedupe keys.
+- Risk: session leaks after repeated debug runs.
+  - Mitigation: debug-session-manager deterministic disposal and restart-path integration tests.
+
+### Implementation Readiness for Epic 10
+
+Epic 10 is architecture-ready with explicit ownership, contracts, and test gates. Implementation can proceed story-by-story without revisiting core transport boundaries or coexistence strategy.
