@@ -2,6 +2,7 @@ import os from "node:os";
 import { isIP } from "node:net";
 import CDP from "chrome-remote-interface";
 import type ProtocolMappingApi from "devtools-protocol/types/protocol-mapping";
+import type * as vscode from "vscode";
 
 import type { EndpointConfig, Localize } from "../config/endpoint-config";
 import {
@@ -45,10 +46,35 @@ function raceWithTimeout<T>(
 export type BrowserRuntimeEvaluateResult =
   ProtocolMappingApi.Commands["Runtime.evaluate"]["returnType"];
 
+type DebuggerSetBreakpointByUrlParams =
+  ProtocolMappingApi.Commands["Debugger.setBreakpointByUrl"]["paramsType"][0];
+type DebuggerSetBreakpointByUrlResult =
+  ProtocolMappingApi.Commands["Debugger.setBreakpointByUrl"]["returnType"];
+type DebuggerRemoveBreakpointParams =
+  ProtocolMappingApi.Commands["Debugger.removeBreakpoint"]["paramsType"][0];
+type DebuggerPausedEvent = ProtocolMappingApi.Events["Debugger.paused"][0];
+
+export interface BrowserDebuggerSession {
+  setBreakpointByUrl: (
+    params: Pick<
+      DebuggerSetBreakpointByUrlParams,
+      "url" | "lineNumber" | "columnNumber" | "condition"
+    >,
+  ) => Promise<
+    Pick<DebuggerSetBreakpointByUrlResult, "breakpointId" | "locations">
+  >;
+  removeBreakpoint: (params: DebuggerRemoveBreakpointParams) => Promise<void>;
+  resume: () => Promise<void>;
+  onPaused: (
+    listener: (event: DebuggerPausedEvent) => void,
+  ) => vscode.Disposable;
+}
+
 export interface ActiveBrowserConnection {
   targetId: string;
   sessionId: string;
   endpoint: EndpointConfig;
+  debugger: BrowserDebuggerSession;
   evaluate: (expression: string) => Promise<BrowserRuntimeEvaluateResult>;
   terminateExecution: () => Promise<void>;
   close: () => Promise<void>;
@@ -71,7 +97,84 @@ export function toSessionScopedEventName(
   return `${eventName}.${sessionId}`;
 }
 
+function removeClientListener(
+  client: CDP.Client,
+  eventName: string,
+  listener: (event: unknown) => void,
+): void {
+  const emitter = client as unknown as {
+    off?: (name: string, callback: (event: unknown) => void) => void;
+    removeListener?: (name: string, callback: (event: unknown) => void) => void;
+  };
+
+  if (typeof emitter.off === "function") {
+    emitter.off(eventName, listener);
+    return;
+  }
+
+  emitter.removeListener?.(eventName, listener);
+}
+
+export function createBrowserDebuggerSession(
+  client: CDP.Client,
+  sessionId: string,
+): BrowserDebuggerSession {
+  return {
+    setBreakpointByUrl: async (params) =>
+      (await client.send(
+        "Debugger.setBreakpointByUrl",
+        params,
+        sessionId,
+      )) as Pick<
+        DebuggerSetBreakpointByUrlResult,
+        "breakpointId" | "locations"
+      >,
+    removeBreakpoint: async (params) => {
+      await client.send("Debugger.removeBreakpoint", params, sessionId);
+    },
+    resume: async () => {
+      try {
+        await client.send("Debugger.resume", undefined, sessionId);
+      } catch {
+        // Best-effort resume.
+      }
+    },
+    onPaused: (listener) => {
+      const eventName = toSessionScopedEventName("Debugger.paused", sessionId);
+      const handler = listener as (event: unknown) => void;
+
+      client.on(eventName, handler);
+
+      return {
+        dispose: () => {
+          removeClientListener(client, eventName, handler);
+        },
+      };
+    },
+  };
+}
+
 let activeBrowserConnection: ActiveBrowserConnection | undefined;
+
+interface BrowserConnectDependencies {
+  resolveWebSocketUrl: (
+    endpoint: EndpointConfig,
+    localize: Localize,
+  ) => Promise<string>;
+  createBrowserClient: (browserWebSocketUrl: string) => Promise<CDP.Client>;
+}
+
+function createBrowserConnectDependencies(): BrowserConnectDependencies {
+  return {
+    resolveWebSocketUrl: (endpoint, localize) =>
+      resolveBrowserWebSocketUrl(endpoint, localize),
+    createBrowserClient: async (browserWebSocketUrl) =>
+      CDP({
+        target: browserWebSocketUrl,
+        local: true,
+      }),
+  };
+}
 
 const passthroughLocalize = ((input: string): string => input) as Localize;
 
@@ -316,6 +419,7 @@ async function connectViaBrowserTargetAttach(
   endpoint: EndpointConfig,
   profile: TargetProfile,
   localize: Localize,
+  dependencies: BrowserConnectDependencies,
   abortSignal?: AbortSignal,
 ): Promise<ConnectToTargetResult> {
   let client: CDP.Client | undefined;
@@ -326,7 +430,7 @@ async function connectViaBrowserTargetAttach(
     let browserWebSocketUrl = "";
     try {
       browserWebSocketUrl = await withAbortSignal(
-        resolveBrowserWebSocketUrl(endpoint, localize),
+        dependencies.resolveWebSocketUrl(endpoint, localize),
         abortSignal,
         localize,
       );
@@ -336,10 +440,7 @@ async function connectViaBrowserTargetAttach(
 
     try {
       client = await withAbortSignal(
-        CDP({
-          target: browserWebSocketUrl,
-          local: true,
-        }),
+        dependencies.createBrowserClient(browserWebSocketUrl),
         abortSignal,
         localize,
       );
@@ -398,12 +499,36 @@ async function connectViaBrowserTargetAttach(
       throw createStepError("Runtime.evaluate(probe)", error);
     }
 
+    try {
+      await withAbortSignal(
+        client.send("Debugger.enable", undefined, attachResult.sessionId),
+        abortSignal,
+        localize,
+      );
+    } catch (error) {
+      await safeDetachFromTarget(client, attachResult.sessionId);
+      throw createStepError(
+        "Debugger.enable",
+        new Error(
+          localize({
+            message: "Failed to enable Debugger domain on browser session: {0}",
+            args: [getErrorMessage(error)],
+            comment: ["{0} is the CDP Debugger.enable failure message."],
+          }),
+        ),
+      );
+    }
+
     throwIfCanceled(abortSignal, localize);
 
     await clearActiveBrowserConnection();
 
     const retainedClient = client;
     const retainedSessionId = attachResult.sessionId;
+    const debuggerSession = createBrowserDebuggerSession(
+      retainedClient,
+      retainedSessionId,
+    );
 
     const terminateExecution = async (): Promise<void> => {
       try {
@@ -421,6 +546,7 @@ async function connectViaBrowserTargetAttach(
       targetId: targetSelection.target.targetId,
       sessionId: retainedSessionId,
       endpoint,
+      debugger: debuggerSession,
       evaluate: async (expression: string) =>
         raceWithTimeout(
           retainedClient.send(
@@ -468,6 +594,7 @@ export async function connectToBrowserTarget(
   profile: TargetProfile = getActiveProfile(),
   localize: Localize = passthroughLocalize,
   abortSignal?: AbortSignal,
+  dependencies: BrowserConnectDependencies = createBrowserConnectDependencies(),
 ): Promise<ConnectToTargetResult> {
   let lastError: unknown;
 
@@ -477,6 +604,7 @@ export async function connectToBrowserTarget(
         endpoint,
         profile,
         localize,
+        dependencies,
         abortSignal,
       );
     } catch (error) {

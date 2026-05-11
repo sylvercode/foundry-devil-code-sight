@@ -25,5 +25,9 @@
   "Cell execution timed out. The async operation did not complete within the allowed time. Simplify the expression or check for unresolved Promises.": "Cell execution timed out. The async operation did not complete within the allowed time. Simplify the expression or check for unresolved Promises.",
   "Cell execution timed out. Check for unresolved Promises and try again.": "Cell execution timed out. Check for unresolved Promises and try again.",
   "(isolated cell)": "(isolated cell)",
-  "[{0}] Notebook {1} ({2}): {3}": "[{0}] Notebook {1} ({2}): {3}"
+  "[{0}] Notebook {1} ({2}): {3}": "[{0}] Notebook {1} ({2}): {3}",
+  "Failed to enable Debugger domain on browser session: {0}": "Failed to enable Debugger domain on browser session: {0}",
+  "Failed to mirror notebook-cell breakpoint to browser: {0}": "Failed to mirror notebook-cell breakpoint to browser: {0}",
+  "Failed to remove notebook-cell breakpoint from browser: {0}": "Failed to remove notebook-cell breakpoint from browser: {0}",
+  "Failed to auto-resume browser debugger after pause: {0}": "Failed to auto-resume browser debugger after pause: {0}"
 }

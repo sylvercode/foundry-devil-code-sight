@@ -23,5 +23,23 @@ export default tseslint.config(
                 },
             ],
         },
+    },
+    {
+        files: ['tests/**/*.ts'],
+        languageOptions: {
+            parserOptions: {
+                project: './tsconfig.test.json',
+            },
+        },
+        rules: {
+            '@typescript-eslint/no-unused-vars': [
+                'error',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    caughtErrorsIgnorePattern: '^_',
+                },
+            ],
+        },
     }
 );
