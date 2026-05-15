@@ -26,6 +26,8 @@ The original Story 2.5 ACs inherited the **Passive Provider** posture locked by 
 
 This story is the CDP-side mirror only. The VS Code editor will NOT show a solid "verified" gutter glyph, will NOT enter a `vscode.DebugSession`, will NOT highlight the paused line, and will NOT populate the Variables / Call Stack / Watch panels. Pause inspection happens in the browser's DevTools (the same workflow already validated in the spike). Adding a Debug Adapter Protocol (DAP) adapter to surface a real VS Code debug session is tracked separately in [docs/stories/deferred-work.md](deferred-work.md) under "Full VS Code Debug Adapter for cell debugging".
 
+Confirmed limitation from implementation validation: a VS Code notebook-cell breakpoint mirrored through the extension's CDP session binds in V8 and does pause execution, but Chromium DevTools may not render a visible gutter marker for that breakpoint in the Sources panel because the breakpoint was created from a different debugger session. The Sources entry for the cell still appears, and the mirrored breakpoint still participates in pause/resume behavior; only the DevTools marker visibility is unreliable.
+
 ## Acceptance Criteria
 
 ### AC 1: `Debugger.enable` on Per-Target Session Attach (Diagnostic Observer Posture)
@@ -41,7 +43,8 @@ This story is the CDP-side mirror only. The VS Code editor will NOT show a solid
 **Given** a `vscode.SourceBreakpoint` whose `location.uri.scheme === 'vscode-notebook-cell'`
 **When** the extension is connected to a target
 **Then** the extension calls `Debugger.setBreakpointByUrl` using the cell URI string (`NotebookCell.document.uri.toString()`, byte-identical to the `//# sourceURL=` value emitted by Story 2.4) as the `url` and the `vscode.SourceBreakpoint.location.range.start.line` as the zero-based `lineNumber`
-**And** rerunning the matching cell pauses execution in the browser at the expected line, visible in the browser's DevTools Sources panel
+**And** rerunning the matching cell pauses execution in the browser at the expected line, with the cell source visible in the browser's DevTools Sources panel
+**And** the breakpoint is considered successfully mirrored when V8 binds and hits it, even if DevTools does not render a visible gutter marker for the mirrored breakpoint because it originated from the extension's separate CDP session
 **And** the in-memory mapping from `vscode.Breakpoint.id` to CDP `breakpointId` is recorded so the breakpoint can later be removed.
 
 ### AC 3: Breakpoint Add / Remove / Edit Translation
@@ -228,7 +231,7 @@ Any user-visible diagnostic emitted by Story 2.5 must go through `vscode.l10n.t(
   1. Open a `.ipynb`, select the Browser Kernel controller on a JavaScript cell.
   2. Set a gutter breakpoint on a line of a cell.
   3. Run the connect command against a Chromium target with the page open.
-  4. Run the cell. Confirm the browser's DevTools Sources panel shows the cell, with the breakpoint visible and triggered (paused-line marker in DevTools, NOT in VS Code).
+  4. Run the cell. Confirm the browser's DevTools Sources panel shows the cell and that execution pauses on the mirrored breakpoint. Do NOT require a visible DevTools gutter marker for the mirrored breakpoint; current Chromium behavior may keep the breakpoint active in V8 without rendering the marker because the breakpoint was created from the extension's separate CDP session.
   5. Step / continue / inspect variables in DevTools as the inspection surface.
   6. Disconnect and reconnect; reset breakpoints; confirm AC 4 (snapshot) re-registers them.
 
@@ -242,7 +245,7 @@ This is the **fifth story in Epic 2**, and the second of two stories that share 
 
 - Story 2.5 owns: `Debugger.enable` at attach, `Debugger.setBreakpointByUrl` mirror from `vscode.debug.breakpoints`, `Debugger.removeBreakpoint` on change, auto-resume on extension-session `Debugger.paused`, snapshot of pre-existing breakpoints on connect, mirror-mapping lifecycle tied to connection state.
 - Story 2.5 does NOT own: per-cell `//# sourceURL` emission (Story 2.4), Pattern B wrapper (Story 2.4), VS Code-side debug UI (deferred — Debug Adapter Protocol epic), `Debugger.setPauseOnExceptions` / exception breakpoints (deferred), conditional / hit-count breakpoints (the mirror passes condition through via `setBreakpointByUrl({ condition })` if VS Code provides it, but the AC set does not require validation of condition semantics — keep it best-effort).
-- Story 2.5 does NOT introduce a `vscode.DebugSession`. The user does NOT see paused-line markers or the Variables / Call Stack / Watch panels in VS Code. Pause inspection is exclusively in the browser's DevTools.
+- Story 2.5 does NOT introduce a `vscode.DebugSession`. The user does NOT see paused-line markers or the Variables / Call Stack / Watch panels in VS Code. Pause inspection is exclusively in the browser's DevTools. Current Chromium behavior also means the user may not see a DevTools gutter marker for a breakpoint mirrored from the extension's debugger session even though that breakpoint is active and can pause execution.
 
 ### Locked Decisions From Spike (Must Be Honored)
 

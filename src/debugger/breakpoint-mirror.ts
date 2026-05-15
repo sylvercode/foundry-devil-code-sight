@@ -46,6 +46,25 @@ function toSetBreakpointParams(breakpoint: SourceBreakpointLike): {
   };
 }
 
+function formatBreakpointLocations(
+  locations: ReadonlyArray<{
+    scriptId: string;
+    lineNumber: number;
+    columnNumber?: number;
+  }>,
+): string {
+  if (locations.length === 0) {
+    return "[]";
+  }
+
+  return locations
+    .map(
+      (location) =>
+        `{scriptId=${location.scriptId}, line=${location.lineNumber}, column=${location.columnNumber ?? 0}}`,
+    )
+    .join(", ");
+}
+
 export function createBreakpointMirror(
   options: BreakpointMirrorOptions,
 ): BreakpointMirror {
@@ -57,6 +76,21 @@ export function createBreakpointMirror(
     options.logger?.(
       "Failed to mirror notebook-cell breakpoint to browser: {0}",
       error,
+    );
+  };
+
+  const logMirrorSetSuccess = (
+    breakpoint: SourceBreakpointLike,
+    browserBreakpointId: string,
+    locations: ReadonlyArray<{
+      scriptId: string;
+      lineNumber: number;
+      columnNumber?: number;
+    }>,
+  ): void => {
+    options.logger?.(
+      "Mirrored notebook-cell breakpoint registered in browser: {0}",
+      `vscodeId=${breakpoint.id}; browserId=${browserBreakpointId}; url=${breakpoint.location.uri.toString()}; line=${breakpoint.location.range.start.line}; locations=${formatBreakpointLocations(locations)}`,
     );
   };
 
@@ -84,7 +118,13 @@ export function createBreakpointMirror(
     pausedDisposable?.dispose();
     pausedSession = currentSession;
 
-    pausedDisposable = currentSession.onPaused(() => {
+    pausedDisposable = currentSession.onPaused((event) => {
+      const hitBreakpoints = (event.hitBreakpoints ?? []).join(", ");
+      options.logger?.(
+        "Browser debugger pause observed on extension session: {0}",
+        `reason=${event.reason}; hitBreakpoints=${hitBreakpoints.length > 0 ? hitBreakpoints : "[]"}`,
+      );
+
       void currentSession.resume().catch((error) => {
         options.logger?.(
           "Failed to auto-resume browser debugger after pause: {0}",
@@ -131,6 +171,11 @@ export function createBreakpointMirror(
         toSetBreakpointParams(breakpoint),
       );
       mirroredBreakpointIds.set(breakpoint.id, response.breakpointId);
+      logMirrorSetSuccess(
+        breakpoint,
+        response.breakpointId,
+        response.locations,
+      );
     } catch (error) {
       logMirrorSetFailure(error);
     }

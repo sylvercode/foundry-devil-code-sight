@@ -28,6 +28,8 @@
   "[{0}] Notebook {1} ({2}): {3}": "[{0}] Notebook {1} ({2}): {3}",
   "Failed to enable Debugger domain on browser session: {0}": "Failed to enable Debugger domain on browser session: {0}",
   "Failed to mirror notebook-cell breakpoint to browser: {0}": "Failed to mirror notebook-cell breakpoint to browser: {0}",
+  "Mirrored notebook-cell breakpoint registered in browser: {0}": "Mirrored notebook-cell breakpoint registered in browser: {0}",
   "Failed to remove notebook-cell breakpoint from browser: {0}": "Failed to remove notebook-cell breakpoint from browser: {0}",
-  "Failed to auto-resume browser debugger after pause: {0}": "Failed to auto-resume browser debugger after pause: {0}"
+  "Failed to auto-resume browser debugger after pause: {0}": "Failed to auto-resume browser debugger after pause: {0}",
+  "Browser debugger pause observed on extension session: {0}": "Browser debugger pause observed on extension session: {0}"
 }
