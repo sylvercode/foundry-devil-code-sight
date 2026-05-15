@@ -52,6 +52,19 @@ Flow:
 4. Patch snippet assumptions.
 5. Rerun until behavior converges.
 
+### Journey 5 (Post-MVP): Debug in VS Code
+
+Goal: perform breakpoint-driven debugging directly in VS Code notebook-cell surfaces.
+
+Flow:
+
+1. Set breakpoint in notebook-cell gutter.
+2. Start notebook-cell debug session.
+3. Run cell until paused-line highlight appears.
+4. Inspect Variables, Watch, and Call Stack panes.
+5. Use step in/over/out or continue.
+6. Validate behavior and return to normal edit-run loop.
+
 ### Journey Patterns
 
 Navigation patterns:

@@ -39,6 +39,7 @@ FR34 [Post-MVP Foundry Profile]: The extension can provide a Foundry starter not
 FR35 [Post-MVP Foundry Profile]: A Foundry power user can save a notebook cell as a reusable action.
 FR36 [Post-MVP Foundry Profile]: A Foundry power user can reopen or execute a saved action, including prompted inputs when required.
 FR37 [Post-MVP Core]: A user can define $prompt() substitution placeholders in a notebook cell so that execution pauses and requests a value for each placeholder before running.
+FR39 [Post-MVP Core]: A user can start a VS Code debug session for notebook-cell execution and see breakpoint verification, paused-line highlighting, call stack, variables, and watch evaluation in native VS Code debug surfaces.
 
 ## NonFunctional Requirements
 
@@ -144,6 +145,7 @@ FR34: Epic 8 - Foundry starter notebook flow
 FR35: Epic 8 - save reusable action
 FR36: Epic 8 - reopen and execute saved action with prompts
 FR37: Epic 9 - pre-execution parameter substitution via $prompt()
+FR39: Epic 10 - full VS Code notebook-cell debugging experience via DAP
 
 ### UX-DR to FR Mapping Notes
 

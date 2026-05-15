@@ -37,7 +37,7 @@ documentCounts:
 workflowType: prd
 workflow: edit
 projectName: jupyter-browser-kernel
-lastEdited: 2026-04-19
+lastEdited: 2026-05-11
 editHistory:
   - date: 2026-03-18
     changes: Reframed the product as a browser execution platform with Foundry as the first MVP profile, split core platform and profile scope, and regrouped requirements.
@@ -71,13 +71,15 @@ editHistory:
     changes: Aligned Integration Requirements output-helper bullet with FR23 functional-category style, clarified FR13 shared-runtime pattern (global namespace), and replaced opaque FR25 watcher terminology with plain-language equivalents.
   - date: 2026-04-19
     changes: Added FR38 establishing source-level breakpoint debugging as a core kernel MVP capability and updated J1 traceability to cover it.
+  - date: 2026-05-11
+    changes: Added FR39 for post-MVP full VS Code native notebook-cell debugging and linked it to a new post-MVP core epic.
 ---
 
 # Product Requirements Document - jupyter-browser-kernel
 
 **Author:** Sylvercode
 **Date:** 2026-03-15
-**Last Edited:** 2026-04-19
+**Last Edited:** 2026-05-11
 
 ## Executive Summary
 
@@ -444,7 +446,7 @@ This product is a VS Code-only developer tool. Its core job is deterministic Jav
 
 ## Functional Requirements
 
-Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution contract used by MVP journeys; FR24 through FR26 (observation extensions) and FR37 (parameterized execution) are post-MVP core-platform enhancements mapped to existing journeys as post-MVP expansions; FR27 through FR36 cover post-MVP app-specific profile requirements (Foundry).
+Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution contract used by MVP journeys; FR24 through FR26 (observation extensions), FR37 (parameterized execution), and FR39 (VS Code-native debugging) are post-MVP core-platform enhancements mapped to existing journeys as post-MVP expansions; FR27 through FR36 cover post-MVP app-specific profile requirements (Foundry).
 
 ### Core Platform Requirements
 
@@ -517,6 +519,7 @@ Traceability highlights: FR1 through FR23 plus FR38 cover the platform execution
 #### Core Parameterization Extension [Post-MVP Core]
 
 - FR37 [Post-MVP]: A user can define `$prompt()` substitution placeholders in a notebook cell so that execution pauses and requests a value for each placeholder before running.
+- FR39 [Post-MVP]: A user can start a VS Code debug session for notebook-cell execution and see breakpoint verification, paused-line highlighting, call stack, variables, and watch evaluation in native VS Code debug surfaces.
 
 ## Non-Functional Requirements
 
@@ -566,7 +569,7 @@ This table maps each user journey to the scope items, functional requirements, a
 
 | Journey                               | Scope Items              | FRs                                            | NFRs                         |
 | ------------------------------------- | ------------------------ | ---------------------------------------------- | ---------------------------- |
-| J1: Rapid Snippet Iteration           | Core 1–11                | FR1–FR18, FR22–FR23, FR38; post-MVP: FR24–FR26, FR37 | NFR1, NFR3, NFR5–9, NFR12–13 |
+| J1: Rapid Snippet Iteration           | Core 1–11                | FR1–FR18, FR22–FR23, FR38; post-MVP: FR24–FR26, FR37, FR39 | NFR1, NFR3, NFR5–9, NFR12–13 |
 | J2: Safe Experimentation and Reversal | Core 3–4, 10             | FR8–FR17, FR19–FR21; post-MVP: FR37            | NFR1, NFR3, NFR5–6           |
 | J3: Connection and Target Recovery    | Core 1–2, 4–5            | FR1–FR7                                        | NFR2, NFR4, NFR8–9           |
 | J4: Diagnosing Unexpected Behavior    | Core 2, 4, 7             | FR14–FR18; post-MVP: FR24–FR26                 | NFR3, NFR5–6, NFR8, NFR15–17 |

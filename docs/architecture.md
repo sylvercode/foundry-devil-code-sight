@@ -208,7 +208,9 @@ Debugger lifecycle:
 - A mirrored breakpoint created from the extension's debugger session is considered active when V8 binds and hits it. Chromium DevTools may still omit a visible gutter marker for that breakpoint in the Sources panel because the marker UI is session-local, so marker visibility is not part of the mirror contract.
 - Browser-side breakpoints set directly in the Sources panel continue to fire without extension involvement, because the sourceURL contract is honored.
 - Any `Debugger.paused` event delivered to the extension's session is auto-resumed on that session, so the extension never holds the JS thread on behalf of another CDP client (Q3 caveat).
-- Pause inspection (paused-line marker, Variables / Call Stack / Watch panels, step controls) happens in the browser's DevTools, not in VS Code. Surfacing pause inspection inside VS Code requires registering a Debug Adapter Protocol (DAP) adapter and is tracked as deferred work, not part of FR38's MVP scope.
+- Pause inspection for FR38 remains browser-DevTools owned in MVP.
+- Post-MVP core (FR39) adds a dedicated Debug Adapter Protocol (DAP) adapter that maps notebook-cell debug events and controls into VS Code native debug surfaces.
+- The DAP adapter must preserve CDP flat-session coexistence and must not regress external DevTools interoperability.
 
 Evaluation strategy and `replMode`:
 
