@@ -152,117 +152,61 @@ So that advanced debugging tools can run side-by-side without deadlock or forced
   - Connection lost while variables are being resolved.
   - Connection lost immediately after breakpoint hit.
 
-### 7. Create Static HTML Test Fixture (AC: 6)
+### 7. Reuse the Existing Headless-Chromium Harness (AC: 6)
 
-- [ ] Create `tests/fixtures/debug-target.html`:
-  - Simple HTML file with JavaScript code for debugging.
-  - Includes functions for testing step-in, step-out, and variable inspection.
-  - Example:
-
-    ```javascript
-    function outer() {
-      let x = 42;
-      inner(x);
-      return x;
-    }
-
-    function inner(val) {
-      let y = val + 1;
-      return y;
-    }
-
-    outer();
-    ```
-
-  - Accessible via local HTTP server or file:// URL during tests.
+- [ ] Do NOT create a new mock CDP server or static HTML file. Reuse [tests/integration/helpers/headless-chromium.ts](../../tests/integration/helpers/headless-chromium.ts), which already launches a real Chromium with the inline test page used by other Epic 1 / Epic 2 / Story 2.5 integration suites.
+- [ ] If the existing helper does not expose a hook for evaluating arbitrary scripts in the test page, extend the helper (small, additive) rather than forking a new harness. The single helper is the project's canonical CDP integration entry point.
+- [ ] Test pages that need multiple stack frames or scopes are emitted as inline `Runtime.evaluate` strings ending with `//# sourceURL=vscode-notebook-cell://test/<name>.js` so they exercise the real Story 2.4 sourceURL contract.
 
 ### 8. Create Deterministic Integration Test Suite (AC: 6)
 
-- [ ] Create `tests/integration/debug/debugger-lifecycle.test.ts`:
-  - Test 1: **Adapter Startup**
-    - Verify adapter initializes without errors.
-    - Verify DAP server starts and VS Code can connect.
-  - Test 2: **Breakpoint Binding**
-    - Set breakpoint at a line in test fixture.
-    - Verify runtime accepts breakpoint.
-    - Verify breakpoint is verified.
-  - Test 3: **Pause and Inspect**
-    - Hit breakpoint.
-    - Query stack frames, scopes, variables.
-    - Verify responses are well-formed and complete.
-  - Test 4: **Stepping Sequence**
-    - Pause at breakpoint.
-    - Execute: next → next → step-in → step-out → continue.
-    - Verify each step pauses at expected location.
-  - Test 5: **Event Ordering**
-    - Send rapid stepping commands.
-    - Verify pause events are delivered in correct order.
-    - Verify no events are dropped.
-  - Test 6: **Clean Teardown**
-    - End debug session.
-    - Verify all resources are disposed.
-    - Verify no sockets remain open.
-    - Verify no memory leaks in event listeners.
+- [ ] Create `tests/integration/debugger/debugger-lifecycle.integration.test.ts` (gated by `RUN_CDP_INTEGRATION=1`, reuses `tests/integration/helpers/headless-chromium.ts`):
+  - Test 1: **Adapter Startup** — spin up the inline DAP adapter against a real connection, drive `initialize` + `launch` through a synthetic DAP client, assert `Debugger.enable` is sent.
+  - Test 2: **Breakpoint Binding** — evaluate a script with `//# sourceURL=vscode-notebook-cell://test/lifecycle.js`, send DAP `setBreakpoints`, assert `verified: true` with non-empty `locations[]`.
+  - Test 3: **Pause and Inspect** — hit the breakpoint, send DAP `stackTrace` / `scopes` / `variables` / `evaluate`, assert well-formed responses.
+  - Test 4: **Stepping Sequence** — next → next → stepIn → stepOut → continue, asserting each `StoppedEvent` arrives at the expected line.
+  - Test 5: **Event Ordering** — send three `next` commands back-to-back through the adapter; assert exactly three `StoppedEvent`s in order, no duplicates.
+  - Test 6: **Clean Teardown** — `disconnect`, then assert `Debugger.disable` was sent, the per-target session has no remaining `Debugger.paused` listeners, and no `objectId` was leaked (variable store reports zero outstanding handles).
 
-### 9. Add Mock CDP Server for Testing (AC: 1–6)
+### 9. Dual-Client Coexistence Integration Test (AC: 1–5)
 
-- [ ] Create `tests/fixtures/mock-cdp-server.ts`:
-  - Implement a mock CDP server that:
-    - Accepts WebSocket connections (simulating multiple clients).
-    - Emulates breakpoint setting/removal.
-    - Emulates pause/resume events.
-    - Supports stepping commands.
-    - Supports frame/variable queries.
-  - Use for integration tests without requiring a real browser.
+- [ ] Add `tests/integration/debugger/dual-client-coexistence.integration.test.ts` (gated by `RUN_CDP_INTEGRATION=1`, reuses `tests/integration/helpers/headless-chromium.ts`):
+  - Open a second flat session against the same browser-level CDP socket (the spike Q3 pattern — see [spike/cdp-multiplex-findings.md](../../spike/cdp-multiplex-findings.md)) to act as the "DevTools" client; do not require an actual `--auto-open-devtools-for-tabs` browser.
+  - Assert that resuming on the adapter's session leaves the secondary session free to issue independent `Debugger.pause` and `Debugger.getProperties` calls.
+  - Assert that closing the secondary session does not affect the adapter's session (and vice versa).
+  - This is the only test that proves the architectural coexistence guarantee in CI; it is not optional.
 
-### 10. Implement CI Test Validation (AC: 6)
+### 10. CI Integration (AC: 6)
 
-- [ ] Add npm script in `package.json`:
-  - `"test:debug-integration"`: Runs integration tests for debugger.
-  - `"test:all"`: Includes debug integration tests.
-- [ ] Update CI workflow (if exists):
-  - Add step to run `npm run test:debug-integration`.
-  - Fail CI if tests do not pass.
+- [ ] No new npm scripts. Reuse the existing `test:integration:cdp` script (or whatever name the headless-chromium harness already exposes) so the new debugger integration tests run alongside Epic 1 / 2 / 6 integration suites.
+- [ ] Verify the workspace's existing CI workflow already executes the integration test command behind `RUN_CDP_INTEGRATION=1`. If it does, add no entries; if it does not, surface that gap as a blocker rather than silently bolt on a new workflow file.
 
-### 11. Document Coexistence Guarantees (AC: 1–6)
+### 11. Update the Existing Epic 10 Architecture Addendum (AC: 1–6)
 
-- [ ] Add section to `docs/architecture.md`:
-  - Title: **Debug Adapter Coexistence with DevTools**
-  - Content:
-    - Explain multi-client session multiplexing via CDP.
-    - Document that both clients share the same pause/resume state.
-    - Explain event ordering guarantees.
-    - Explain limitations (if any) of dual-client debugging.
-    - Link to troubleshooting guidance.
+- [ ] Update the existing **"Epic 10 Addendum: Full VS Code Debugging Experience"** section in [docs/architecture.md](../architecture.md). Do NOT create a new top-level architecture section.
+  - Promote the coexistence story from "requirement" to "verified by `tests/integration/debugger/dual-client-coexistence.integration.test.ts`".
+  - Cross-link the dual-client integration test alongside the spike findings.
+  - Note any limitations the integration test surfaces (e.g., DevTools breakpoint markers not appearing for adapter-set breakpoints — that nuance is already in the Debugger Domain Integration section).
 
 ### 12. Add Unit Tests (AC: 1–5)
 
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-coexistence.test.ts`:
-  - Test breakpoint state consistency with mock dual-client CDP.
-  - Test stepping with dual clients.
-  - Test resume consistency.
-  - Test command queuing with rapid commands.
-  - Test connection loss handling.
-  - Use mock CDP client that simulates multi-client behavior.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-coexistence.test.ts` using the `BrowserDebuggerSession` mock pattern established by Stories 10.1–10.4:
+  - Adapter never sends a CDP command without going through `BrowserDebuggerSession`.
+  - Disposing the DAP session releases the manager's `onPaused` subscription exactly once and does not call `client.close()`.
+  - Connection-lost callback from the manager produces a single `TerminatedEvent` and clears the variable store.
+  - Rapid `next`+`next`+`continue` requests serialize through the pause-event-serializer (Story 10.4) and never overlap.
 
-### 13. Run Full Validation Suite (AC: 1–6)
+### 13. Validation
 
-- [ ] Run `npm run lint` — no new warnings.
-- [ ] Run `npm run test:unit` — all tests pass.
-- [ ] Run `npm run test:debug-integration` — all integration tests pass.
-- [ ] Run `npm run compile` — clean compilation.
-- [ ] (Manual) In Extension Development Host with real browser:
-  - [ ] Start VS Code debug session connected to browser.
-  - [ ] Open browser DevTools on same page (F12).
-  - [ ] Set breakpoint in VS Code.
-  - [ ] Run code and hit breakpoint.
-  - [ ] Verify both VS Code and DevTools show breakpoint paused state.
-  - [ ] Step in VS Code and verify DevTools updates.
-  - [ ] Step in DevTools and verify VS Code updates.
-  - [ ] Resume in VS Code and verify DevTools continues.
-  - [ ] Reload page (connection loss scenario).
-  - [ ] Verify both clients handle disconnection gracefully.
-  - [ ] Reconnect and verify debug session restarts without issues.
+- [ ] `npm run lint`.
+- [ ] `npm run test`.
+- [ ] `npm run test:integration:cdp`.
+- [ ] `npm run compile`.
+- [ ] Manual smoke (Extension Development Host with real Edge or Chromium):
+  - Connect, open browser DevTools (F12) on the same page.
+  - Set a breakpoint in VS Code, hit it, confirm DevTools also pauses.
+  - Step / continue from VS Code, confirm DevTools state stays coherent.
+  - Force-reload the page and confirm both clients terminate gracefully with the localized message from Story 10.1.
 
 ## Dev Notes
 
@@ -284,19 +228,11 @@ This is the **fifth and final story in Epic 10** and validates the complete epic
 
 ### Test Infrastructure
 
-**Mock CDP Server:**
-The mock server is critical for reliable, fast integration testing. It should:
+**Headless Chromium harness (existing):** [tests/integration/helpers/headless-chromium.ts](../../tests/integration/helpers/headless-chromium.ts) is the canonical CDP integration entry point. Story 10.5 extends it (additively) only if it lacks a primitive the new tests need; no parallel mock CDP server, no static HTML fixture file.
 
-- Emulate all CDP commands used by the debugger (setBreakpoint, pause, resume, stepOver, etc.).
-- Support simultaneous connections (multiple clients).
-- Emit realistic events (paused, resumed, breakpointResolved).
-- Expose hooks for test control (e.g., trigger pause on next command).
+**Test scripts:** Inline `Runtime.evaluate` strings carrying `//# sourceURL=vscode-notebook-cell://test/<name>.js`. This guarantees the test exercises the real Story 2.4 source-identity contract.
 
-**Test Fixtures:**
-
-- Static HTML file with debuggable JavaScript.
-- Must be runnable in headless environments (CI).
-- Should include multiple functions and scopes for comprehensive testing.
+**Dual-client emulation:** Open a second flat CDP session against the same browser-level WebSocket, per the Spike Q3 pattern documented in [spike/cdp-multiplex-findings.md](../../spike/cdp-multiplex-findings.md). This is identical to how a real DevTools attach behaves and avoids the cost and flake of launching a second browser UI.
 
 ### Known Unknowns & Future Decisions
 

@@ -203,15 +203,12 @@ Per-cell source identity contract:
 
 Debugger lifecycle:
 
-- `Debugger.enable` is invoked on each page session at session attach time, alongside existing `Runtime.enable` setup (Diagnostic Observer posture, validated by the spike Q3).
-- The extension does not own a breakpoint UI. Breakpoint authoring is owned by VS Code (notebook-cell gutter breakpoints) and by the browser's Sources panel. The extension only listens.
-- VS Code-side notebook-cell breakpoints are mirrored into the page via `Debugger.setBreakpointByUrl`, using the cell document URI as the `url` (the same value emitted as `//# sourceURL=`). The mirror is driven by `vscode.debug.breakpoints` and `vscode.debug.onDidChangeBreakpoints`; the extension never invents breakpoints of its own.
-- A mirrored breakpoint created from the extension's debugger session is considered active when V8 binds and hits it. Chromium DevTools may still omit a visible gutter marker for that breakpoint in the Sources panel because the marker UI is session-local, so marker visibility is not part of the mirror contract.
+- The transport exposes a `BrowserDebuggerSession` surface on `ActiveBrowserConnection.debugger` (introduced by Story 2.5) that wraps the per-target flat session and surfaces `setBreakpointByUrl`, `removeBreakpoint`, `resume`, `onPaused`, and the additional commands required by Epic 10. This surface is the single channel through which higher layers reach the Debugger domain — direct `client.send("Debugger.*", …)` calls outside the transport are forbidden.
+- `Debugger.enable` is NOT called at session attach. The DAP session manager (Epic 10, Story 10.1) is the sole owner of `Debugger.enable` / `Debugger.disable`, scoped to the lifetime of an active `vscode.DebugSession`. Outside an active debug session, the extension's per-target session does not receive `Debugger.paused` events, which removes the need for any always-on auto-resume behavior.
+- Breakpoint authoring lives in VS Code (notebook-cell gutter breakpoints). The DAP adapter (Story 10.2) translates DAP `setBreakpoints` requests into `Debugger.setBreakpointByUrl` calls keyed off `cell.document.uri.toString()` — the same value Story 2.4 emits as `//# sourceURL=`. There is no always-on `vscode.debug.onDidChangeBreakpoints` mirror; breakpoint sync is driven by DAP requests during an active debug session only.
 - Browser-side breakpoints set directly in the Sources panel continue to fire without extension involvement, because the sourceURL contract is honored.
-- Any `Debugger.paused` event delivered to the extension's session is auto-resumed on that session, so the extension never holds the JS thread on behalf of another CDP client (Q3 caveat).
-- Pause inspection for FR38 remains browser-DevTools owned in MVP.
-- Post-MVP core (FR39) adds a dedicated Debug Adapter Protocol (DAP) adapter that maps notebook-cell debug events and controls into VS Code native debug surfaces.
-- The DAP adapter must preserve CDP flat-session coexistence and must not regress external DevTools interoperability.
+- Pause ownership during a debug session belongs to the DAP adapter: it receives `Debugger.paused`, emits the DAP `stopped` event, and only resumes when VS Code issues `continue`/`next`/`stepIn`/`stepOut`. DevTools coexistence is preserved by the flat-session multiplex (Spike Q3) — DevTools' own session retains independent pause/step control.
+- Post-MVP core (FR39) is delivered by Epic 10 (DAP adapter). The adapter must preserve CDP flat-session coexistence and must not regress external DevTools interoperability.
 
 Evaluation strategy and `replMode`:
 
@@ -731,12 +728,12 @@ This addendum formalizes post-MVP core architecture decisions for FR39 and Epic 
 
 ### New Module Boundaries
 
-Add a dedicated DAP boundary in source structure:
+Add the DAP boundary inside the existing `src/debugger/` folder (created by Story 2.5; the always-on mirror module is decommissioned by Story 10.1):
 
-- src/debug-adapter/
-  - debug-session-manager.ts (session bootstrap, teardown, reconnect-safe lifecycle)
+- src/debugger/
+  - debug-session-manager.ts (DAP session bootstrap, `Debugger.enable`/`disable` ownership, teardown, reconnect-safe lifecycle)
   - notebook-dap-adapter.ts (DAP request/response/event orchestration)
-  - breakpoint-registry.ts (editor breakpoint sync and runtime breakpoint mapping)
+  - breakpoint-registry.ts (DAP `setBreakpoints` ↔ `Debugger.setBreakpointByUrl` reconciliation, runtime breakpoint id mapping)
   - stackframe-mapper.ts (runtime frame to notebook-cell source mapping)
   - variable-store.ts (stable variable handles, scope paging, defensive expansion)
   - stepping-controller.ts (continue/next/stepIn/stepOut command routing)
@@ -746,14 +743,17 @@ Add a dedicated DAP boundary in source structure:
 Integration rules:
 
 - src/notebook may request debug run lifecycle but must not implement DAP protocol details.
-- src/transport remains the only module issuing raw debugger-domain CDP commands.
-- src/debug-adapter must consume transport interfaces and shared normalized error helpers.
+- src/transport remains the only module issuing raw debugger-domain CDP commands. The `BrowserDebuggerSession` surface on `ActiveBrowserConnection.debugger` is extended (not duplicated) for the additional commands Epic 10 needs (`getCallStack`, `getProperties`, `evaluateOnCallFrame`, `stepOver`/`stepInto`/`stepOut`, etc.).
+- src/debugger must consume `BrowserDebuggerSession` and shared normalized error helpers; it must not import `chrome-remote-interface` directly.
+- Story 2.5's `src/debugger/breakpoint-mirror.ts` and its `connectionStateStore`-driven wiring are removed by Story 10.1 — they are superseded by the DAP-owned breakpoint registry.
 
 ### Story-to-Architecture Mapping
 
 Story 10.1 (bootstrap and teardown):
 
 - debug-session-manager owns adapter startup, failure diagnostics, and deterministic resource disposal.
+- debug-session-manager owns `Debugger.enable` on session start and `Debugger.disable` on session end (transferred from Story 2.5's always-on attach-time enablement).
+- Story 10.1 decommissions Story 2.5's `src/debugger/breakpoint-mirror.ts`, removes its wiring from `src/extension.ts`, and removes the unconditional `Debugger.enable` call from `connectViaBrowserTargetAttach`.
 - session restart after stop must be explicit and idempotent.
 
 Story 10.2 (breakpoint verification and binding):

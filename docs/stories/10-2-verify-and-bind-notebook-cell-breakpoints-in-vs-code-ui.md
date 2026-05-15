@@ -23,224 +23,155 @@ So that breakpoint state in VS Code matches actual runtime behavior.
 
 ### AC 1: Breakpoints Can Be Set in Notebook-Cell Gutter
 
-**Given** a notebook cell is open in the editor
+**Given** a notebook cell is open in the editor and a Browser Kernel debug session is active
 **When** the user clicks the gutter (or presses F9) on a line in the cell
-**Then** a breakpoint is displayed as a red dot in the gutter
-**And** VS Code sends a `setBreakpoints` DAP request to the adapter.
+**Then** a breakpoint marker is displayed in the gutter
+**And** VS Code sends a `setBreakpoints` DAP request to the adapter, with `source.path` (or `source.name`) carrying the notebook cell's `vscode-notebook-cell://` URI string.
 
-### AC 2: Adapter Translates Breakpoints to Runtime Debugger
+### AC 2: Adapter Translates Breakpoints to the Runtime via `BrowserDebuggerSession`
 
-**Given** a `setBreakpoints` request with line numbers
+**Given** a `setBreakpoints` request for a notebook cell
 **When** the adapter receives the request
-**Then** the adapter maps notebook-cell source lines to runtime debugger breakpoints
-**And** the adapter sends `Debugger.setBreakpoint` (or equivalent) to the runtime debugger via transport
-**And** verified breakpoint responses include accurate line and column mapping.
+**Then** the adapter calls `BrowserDebuggerSession.setBreakpointByUrl({ url, lineNumber, columnNumber? })` where `url` is `cell.document.uri.toString()` (the same value the kernel emits as `//# sourceURL=` per Story 2.4)
+**And** the adapter responds with verified breakpoints whose `line` reflects the actual location V8 bound (`Debugger.setBreakpointByUrl` returns `locations[]` with the resolved scriptId/lineNumber/columnNumber).
 
 ### AC 3: Breakpoint State Stays Synchronized
 
-**Given** breakpoints are set and debug session is active
-**When** the user adds, removes, enables, or disables a breakpoint
-**Then** the adapter receives a new `setBreakpoints` request immediately
-**And** the runtime debugger is updated to reflect the change
-**And** stale breakpoints are removed from the runtime.
+**Given** breakpoints are set and a debug session is active
+**When** the user adds, removes, or toggles a breakpoint
+**Then** the adapter receives a new `setBreakpoints` request that contains the full desired state for that source
+**And** the adapter computes adds/removes against its per-URL registry, calls `setBreakpointByUrl` for adds and `removeBreakpoint(breakpointId)` for removes via `BrowserDebuggerSession`
+**And** stale runtime breakpoints for that URL are removed before the response is returned.
 
 ### AC 4: Breakpoint Verification Failures Are Clear
 
-**Given** a breakpoint cannot be set at a requested line
-**When** the runtime debugger rejects the breakpoint
-**Then** the adapter marks the breakpoint as `verified: false` with reason
-**And** the breakpoint gutter shows an unfilled or grayed-out dot
-**And** VS Code displays a hover tooltip explaining why (e.g., "Not a valid breakpoint location").
+**Given** `setBreakpointByUrl` returns no `locations[]` entry for a requested line, or the call rejects
+**When** the adapter builds the response
+**Then** that breakpoint is reported as `verified: false` with a localized `message`
+**And** the adapter still resolves the request (one bad breakpoint never fails the whole batch).
 
-### AC 5: Conditional Breakpoints Are Parsed (MVP Scope Minimal)
+### AC 5: Conditional Breakpoints Are Forwarded
 
-**Given** a user tries to set a conditional breakpoint
-**When** the condition is passed to the adapter
-**Then** the adapter accepts the condition string and includes it in the `setBreakpoint` call (if supported by runtime)
-**Or** the adapter accepts it silently and treats it as a regular breakpoint (deferred support).
+**Given** a `setBreakpoints` entry includes `condition`
+**When** the adapter sends `setBreakpointByUrl`
+**Then** the `condition` is forwarded to V8 via the `Debugger.setBreakpointByUrl` `condition` param
+**And** logpoints (`logMessage`) and hit-count breakpoints (`hitCondition`) are accepted but documented as deferred (treated as unconditional for MVP) with a one-line localized informational message.
+
+### AC 6: Breakpoints Survive Kernel Re-Execution of the Cell
+
+**Given** a verified breakpoint is bound for a cell
+**When** the user re-runs the cell (Story 2.4 fast-rerun pattern emits the same `//# sourceURL=`)
+**Then** the breakpoint hits in the new script without the user re-toggling it
+**And** no duplicate runtime breakpoints accumulate for the same `(url, line, column)` triple.
 
 ## Tasks / Subtasks
 
-### 1. Implement `setBreakpoints` DAP Request Handler (AC: 1, 2)
+### 1. Implement `setBreakpoints` DAP Request Handler (AC: 1, 2, 3, 4, 5)
 
-- [ ] In `src/debug/notebook-dap-adapter.ts`, add method `onSetBreakpoints(args: SetBreakpointsArguments): SetBreakpointsResponse`.
-- [ ] The handler must:
-  - Extract source file path from `args.source` (for notebook sources, use a special naming convention, e.g., `"notebook://cellId:line"`).
-  - Extract line numbers from `args.breakpoints` (array of `{ line, column }` objects).
-  - For each breakpoint:
-    1. Map the notebook-cell line number to the actual runtime source location (determined by how source maps are handled; see Dev Notes).
-    2. Call `evaluateDebuggerSetBreakpoint(line, column)` on the transport layer (new method to add).
-    3. Collect responses.
-  - Return a `SetBreakpointsResponse` with an array of verified breakpoint objects.
-  - Each breakpoint object must include:
-    - `verified: boolean` (true if runtime accepted it, false otherwise).
-    - `line: number` (the line that the runtime accepted, may differ from requested).
-    - `source: Source` (the source file).
-    - Optional `message: string` (reason if not verified).
+- [ ] In `src/debugger/notebook-dap-adapter.ts`, implement `setBreakpointsRequest(response, args)`:
+  - Resolve the source URL: prefer `args.source.path` then `args.source.name`. The value is the notebook cell URI string (`vscode-notebook-cell://...`) that VS Code carries through DAP because the adapter declares the source via `cell.document.uri.toString()`.
+  - Compute the desired set of `(line, column?, condition?)` triples from `args.breakpoints ?? []` (DAP lines are 1-based; `Debugger.setBreakpointByUrl` is 0-based — convert in the registry, not in the handler).
+  - Diff against the per-URL registry (Task 2): adds, removes, kept.
+  - For each addition, call the registry's `add(url, line, column?, condition?)` which forwards to `BrowserDebuggerSession.setBreakpointByUrl`.
+  - For each removal, call the registry's `remove(url, key)` which forwards to `BrowserDebuggerSession.removeBreakpoint`.
+  - Return `Breakpoint[]` in the same order as `args.breakpoints`. Each `Breakpoint` must include `verified`, the resolved `line` (preferring the first entry from `locations[]`), the original `source`, and an optional localized `message` for failures.
+  - Logpoints (`logMessage`) and hit conditions (`hitCondition`) are accepted, the registry treats them as unconditional, and the response sets `message` to a localized note that they are not yet supported.
 
-### 2. Create Breakpoint Source Mapping Layer (AC: 2, 4)
+### 2. Create the Per-URL Breakpoint Registry (AC: 2, 3, 6)
 
-- [ ] Create `src/debug/source-mapper.ts`:
-  - Implement `NotebookSourceMapper` class that:
-    - Converts notebook-cell source lines to runtime source locations.
-    - Maintains a mapping of breakpoints: `Map<sourceId, Breakpoint[]>`.
-    - Provides methods:
-      - `registerNotebookCell(cellId, sourceCode)`: Record a cell's source.
-      - `mapBreakpoint(cellId, line)`: Return runtime line number for a cell line.
-      - `unmapBreakpoint(runtimeLine)`: Return notebook cell line (reverse mapping).
-      - `clearCell(cellId)`: Remove all breakpoints for a cell.
-    - **For MVP:** Assume 1:1 line mapping (notebook line N = runtime line N). This is valid since each cell is evaluated as a standalone script.
-    - **Future:** Replace with proper source-map handling if cells are bundled or transpiled.
+- [ ] Create `src/debugger/breakpoint-registry.ts` exporting `createBreakpointRegistry({ debuggerSession, logger })`.
+- [ ] Internal state: `Map<url, Map<key, BoundBreakpoint>>` where `key = "<line>:<column ?? 0>:<condition ?? \"\">"` and `BoundBreakpoint = { breakpointId, line, column, condition, locations }`.
+- [ ] API:
+  - `replace(url, desired: DesiredBreakpoint[]): Promise<BoundBreakpoint[]>` — computes diff, issues `setBreakpointByUrl` and `removeBreakpoint` calls in parallel, returns the resulting bound state in input order.
+  - `clear(url)` and `clearAll()` for session teardown.
+- [ ] No duplicate runtime breakpoints for the same `key` (AC 6) — the diff guarantees idempotence across rerun-driven refreshes.
+- [ ] Failure handling: a single failing add becomes a `BoundBreakpoint` with `verified: false` and a captured error string; the batch resolves.
 
-### 3. Add Transport Interface for Debugger Commands (AC: 2)
+### 3. Reuse and Extend `BrowserDebuggerSession` (AC: 2, 3)
 
-- [ ] Update `src/transport/browser-connect.ts` or create `src/transport/debugger-interface.ts`:
-  - Add method `evaluateDebuggerSetBreakpoint(line: number, column: number): Promise<SetBreakpointResult>`:
-    - Accepts a line and column number.
-    - Sends `Debugger.setBreakpoint` request to the runtime debugger via CDP.
-    - Returns result with `breakpointId`, `actualLine`, `actualColumn`, and any error message.
-  - Add method `evaluateDebuggerRemoveBreakpoint(breakpointId: string): Promise<void>`:
-    - Accepts a breakpoint ID.
-    - Sends `Debugger.removeBreakpoint` request.
-    - Resolves when removed.
-  - **Keep CDP client reference internal to transport.** DAP adapter calls these methods, not CDP directly.
+- [ ] No new transport file. `BrowserDebuggerSession` (introduced by Story 2.5, retained by Story 10.1) already exposes `setBreakpointByUrl`, `removeBreakpoint`, `resume`, and `onPaused`.
+- [ ] If `setBreakpointByUrl`'s current return shape does not include `locations[]`, widen it in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) to return the full `Protocol.Debugger.SetBreakpointByUrlResponse` (`breakpointId` + `locations`). Update the existing transport unit test accordingly.
+- [ ] Confirm `removeBreakpoint(breakpointId)` is already wired; if not, add it on the same surface (do not bypass `BrowserDebuggerSession`).
 
-### 4. Track Active Breakpoints in Debug Session (AC: 1, 3)
+### 4. Source Identity (AC: 1, 6)
 
-- [ ] In `NotebookDAPAdapter`, add a breakpoint store:
-  - `private breakpointsBySource: Map<string, DAP.Breakpoint[]>`.
-  - In `onLaunch()`, initialize the store.
-  - In `onSetBreakpoints()`:
-    1. Retrieve breakpoints currently set for the source.
-    2. Find breakpoints that are in `args.breakpoints` but not in the current set → ADD these to runtime.
-    3. Find breakpoints in the current set but not in `args.breakpoints` → REMOVE these from runtime.
-    4. Update the store with the new breakpoint list.
-    5. Return verified responses.
+- [ ] In the notebook adapter's helper that builds DAP `Source` payloads (used by Story 10.3 for stack frames too), set `source.name` to the cell label and `source.path` to `cell.document.uri.toString()`. There is no `source-mapper.ts` and no `notebook://cellId:line` scheme — the canonical key is the cell document URI from Story 2.4.
+- [ ] Line mapping is 1:1 between the cell document and the V8 script because the kernel wraps user code with a `//# sourceURL=` directive that points at the cell URI (Story 2.4). The adapter must convert DAP 1-based lines to CDP 0-based lines (and back) at exactly one place — inside the registry.
 
-### 5. Handle Breakpoint Removal and Sync (AC: 3, 4)
+### 5. Capability Update (AC: 5)
 
-- [ ] In `onSetBreakpoints()`:
-  - For each breakpoint to remove:
-    1. Extract the breakpoint ID (stored when added).
-    2. Call transport's `evaluateDebuggerRemoveBreakpoint(id)`.
-    3. Verify removal succeeds; if it fails, log a warning but continue.
-  - Return updated breakpoint state to VS Code.
-  - VS Code will update its UI based on the response (verified status, line number).
+- [ ] Extend `initialize` capabilities returned by the adapter (Story 10.1 baseline): set `supportsConditionalBreakpoints: true`. Leave `supportsHitConditionalBreakpoints` and `supportsLogPoints` at `false` for MVP.
+- [ ] `supportsBreakpointLocationsRequest` stays `true` (declared in Story 10.1) but the request is implemented in Task 6.
 
-### 6. Implement Breakpoint Location Resolution (AC: 4)
+### 6. Implement `breakpointLocations` Request (AC: 4)
 
-- [ ] Create `src/debug/breakpoint-resolver.ts`:
-  - Implement `validateBreakpointLocation(source, line): BreakpointValidation`:
-    - For now, always return `{ valid: true }` for MVP (all lines are valid locations in a single-cell context).
-    - In future stories, enhance to detect unreachable lines, function definitions, etc.
-  - Use this in `onSetBreakpoints()` to pre-validate before sending to runtime.
-  - If invalid, return `verified: false` with a clear reason message.
+- [ ] In the adapter, implement `breakpointLocationsRequest(response, args)` returning all lines in the requested range as candidate locations for MVP. This keeps VS Code's gutter responsive without requiring V8 introspection. Tighten in a follow-up if needed.
 
-### 7. Handle Conditional Breakpoints (AC: 5)
+### 7. Session Teardown (AC: 3)
 
-- [ ] In `onSetBreakpoints()`:
-  - Check if `args.breakpoints[i].condition` is set.
-  - If condition exists:
-    - Include it in the `Debugger.setBreakpoint` call if the runtime supports conditions.
-    - If not supported in runtime, log a warning and treat as unconditional breakpoint.
-    - For MVP, conditions are optional; accept silently without full evaluation support (deferred to Story 10.3).
-  - Store the condition in the breakpoint object for reference.
+- [ ] Story 10.1's `debug-session-manager` calls `breakpointRegistry.clearAll()` on `disconnect`/`terminate` BEFORE `Debugger.disable`. Wire this in.
 
-### 8. Add Breakpoint State Queries (AC: 3)
+### 8. Localization (AC: 4, 5)
 
-- [ ] Implement DAP request handlers for breakpoint queries (future use, but set up structure now):
-  - `onBreakpointLocationsRequest(args)` (optional for MVP, but prepare structure):
-    - Allows VS Code to query valid breakpoint locations in a source.
-    - For MVP, return all lines as valid.
+- [ ] Add localized strings to [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json):
+  - `"Breakpoint could not be bound: {0}"`
+  - `"Logpoints and hit-count breakpoints are not yet supported by the Browser Kernel debugger; binding as unconditional."`
 
-### 9. Add Unit Tests (AC: 1, 2, 3, 4, 5)
+### 9. Unit Tests (AC: 1–6)
 
-- [ ] Create `tests/unit/debug/source-mapper.test.ts`:
-  - Test `registerNotebookCell()` stores source correctly.
-  - Test `mapBreakpoint()` returns expected runtime line (1:1 for MVP).
-  - Test `unmapBreakpoint()` reverses correctly.
-  - Test `clearCell()` removes all breakpoints for a cell.
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-breakpoints.test.ts`:
-  - Test `onSetBreakpoints()` with valid line numbers → returns verified breakpoints.
-  - Test adding new breakpoints → transport method called with correct parameters.
-  - Test removing breakpoints → transport method called to remove.
-  - Test sync: new breakpoints replace old ones correctly.
-  - Test error case: runtime rejects breakpoint → returns `verified: false`.
-  - Test conditional breakpoint → included in runtime call (or ignored for MVP).
-  - Use mock transport that returns controlled results.
-- [ ] Create `tests/unit/debug/breakpoint-resolver.test.ts`:
-  - Test `validateBreakpointLocation()` returns valid for all lines (MVP).
-  - Test invalid source file handling.
+- [ ] `tests/unit/debugger/breakpoint-registry.test.ts`:
+  - `replace` with empty current and three desired → three `setBreakpointByUrl` calls, no `removeBreakpoint`.
+  - `replace` with current = {A,B,C} and desired = {A,C,D} → one add (D), one remove (B), no churn for A/C.
+  - `replace` with one failing add → returned entry has `verified: false`, others are bound.
+  - DAP-to-CDP line conversion verified at the registry boundary.
+  - `clearAll` removes every `breakpointId` exactly once.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-breakpoints.test.ts`:
+  - `setBreakpointsRequest` resolves the `vscode-notebook-cell://...` URI from `source.path`.
+  - Conditional entries forward `condition` to the registry.
+  - Logpoint entries set the localized informational `message` and bind unconditionally.
+  - Capability snapshot updated.
+- [ ] `tests/unit/transport/browser-connect.test.ts` (update): assert `setBreakpointByUrl` returns the full `{ breakpointId, locations }` shape.
 
-### 10. Run Full Validation Suite (AC: 1, 2, 3, 4, 5)
+### 10. Integration Test (AC: 2, 6)
 
-- [ ] Run `npm run lint` — no new warnings or errors.
-- [ ] Run `npm run test:unit` — all unit tests pass including breakpoint tests.
-- [ ] Run `npm run compile` — clean compilation.
-- [ ] (Manual) In Extension Development Host:
-  - [ ] Start debug session with notebook connected to browser.
-  - [ ] Click gutter to set a breakpoint on a line with code.
-  - [ ] Verify red dot appears and remains after click.
-  - [ ] Set a breakpoint, then toggle enable/disable via right-click menu.
-  - [ ] Verify breakpoint state in runtime matches VS Code UI.
-  - [ ] Remove a breakpoint by clicking the gutter again.
-  - [ ] Verify breakpoint is removed from runtime and UI.
+- [ ] `tests/integration/debugger/breakpoint-binding.integration.test.ts` (gated by `RUN_CDP_INTEGRATION=1`, reuses `tests/integration/helpers/headless-chromium.ts`):
+  - Connect, start a DAP session via the adapter, evaluate a script that ends with `//# sourceURL=vscode-notebook-cell://test/cell-1.js`, send `setBreakpoints` for line 2, expect `verified: true` with a non-empty `locations[]`.
+  - Re-evaluate the same script and expect the breakpoint to still hit on the next run without re-issuing `setBreakpoints`.
+
+### 11. Validation
+
+- [ ] `npm run lint`.
+- [ ] `npm run test`.
+- [ ] `npm run compile`.
+- [ ] `npm run test:integration:cdp`.
 
 ## Dev Notes
 
 ### Story Context and Scope
 
-This is the **second story in Epic 10** and builds on Story 10.1's DAP server foundation. It focuses on mapping notebook-cell breakpoints to runtime breakpoint locations and keeping state synchronized between VS Code and the runtime debugger.
+This is the **second story in Epic 10**, building on Story 10.1's DAP plumbing. It implements the `setBreakpoints` and `breakpointLocations` request handlers and the per-URL breakpoint registry that talks to V8 through `BrowserDebuggerSession.setBreakpointByUrl` / `removeBreakpoint`.
 
-**Scope boundary:** This story covers breakpoint setting and synchronization. Variable inspection at breakpoints is Story 10.3. Stepping controls are Story 10.4.
+Variable inspection at breakpoints is Story 10.3. Stepping controls are Story 10.4.
 
 ### Architecture Guardrails (Must Follow)
 
-- **Source mapping:** Notebook cells are evaluated as standalone scripts in the runtime. For MVP, line mapping is 1:1 (notebook line N = runtime line N). Do NOT attempt source-map rewriting or transpilation. If cells are bundled in future, source mapping will need to be redesigned.
-- **Transport abstraction:** DAP adapter calls `evaluateDebuggerSetBreakpoint()` and similar methods on the transport layer. The adapter does NOT call CDP directly.
-- **Breakpoint ID handling:** The runtime returns a `breakpointId` for each set breakpoint. Store this ID in the adapter's state so you can remove the breakpoint later by ID, not by line number (runtime debugger semantics).
-- **No hardcoded magic numbers:** Use named constants for defaults (e.g., `DEFAULT_BREAKPOINT_COLUMN = 0`).
-- **Error localization:** Breakpoint failure messages must use `vscode.l10n.t()`.
-
-### Transport Layer Extensions
-
-Add to `src/transport/browser-connect.ts` or equivalent:
-
-```typescript
-interface SetBreakpointResult {
-  breakpointId: string;
-  actualLine: number;
-  actualColumn: number;
-  verified: boolean;
-  message?: string;
-}
-
-// On ActiveBrowserConnection or transport module:
-export async function evaluateDebuggerSetBreakpoint(
-  line: number,
-  column: number,
-  sessionId: string,
-): Promise<SetBreakpointResult> {
-  // Send Debugger.setBreakpoint via CDP
-  // Return structured result
-}
-
-export async function evaluateDebuggerRemoveBreakpoint(
-  breakpointId: string,
-  sessionId: string,
-): Promise<void> {
-  // Send Debugger.removeBreakpoint via CDP
-}
-```
+- **Source identity is the cell document URI.** Story 2.4 emits `//# sourceURL=<cell.document.uri.toString()>` and Story 10.1 sets `Source.path` to the same string. Do NOT invent a `notebook://cellId:line` or any other scheme.
+- **Use `setBreakpointByUrl`, not `setBreakpoint`.** `Debugger.setBreakpoint(location)` requires a known `scriptId`, which the kernel does not stably expose. `setBreakpointByUrl` matches scripts by `url` and survives re-execution, which is exactly the Story 2.4 / 6.1 fast-rerun pattern.
+- **Single transport surface.** All CDP debugger calls go through `BrowserDebuggerSession`. No new `src/transport/debugger-interface.ts`, no direct `client.send("Debugger.*", ...)` outside `src/transport/`.
+- **Folder is `src/debugger/`.** Created by Story 2.5, owned by Epic 10 going forward.
+- **Line indexing.** DAP is 1-based, CDP is 0-based. Convert at exactly one boundary (the registry).
+- **Breakpoint id ownership.** The registry stores `breakpointId` per `(url, key)` and is the only thing that calls `removeBreakpoint`.
+- **Localization.** All user-facing strings via `vscode.l10n.t()` keyed in `l10n/bundle.l10n.json`.
 
 ### Known Unknowns & Future Decisions
 
-1. **Conditional breakpoint support:** Current plan is to accept but ignore conditions for MVP. Full condition evaluation requires runtime integration.
-2. **Logpoints:** VS Code supports logpoint syntax (breakpoint that logs instead of pausing). Defer this to a future story.
-3. **Hit count breakpoints:** Similar defer.
-4. **Source map integration:** If cells are eventually transpiled or bundled, source mapping strategy will need revision.
+1. **Logpoints and hit conditions** are deferred. Capability flags stay `false`; the registry treats them as unconditional and the adapter surfaces a one-line note.
+2. **`breakpointLocations` precision.** MVP returns all lines in the requested range. Tighten with V8's `getPossibleBreakpoints` if users complain about phantom valid lines.
+3. **Multi-cell scripts.** Each cell evaluates as an independent script with a unique `sourceURL`. If future work wraps multiple cells in one script, the URL strategy must be revisited.
 
 ### Related Documentation
 
 - [DAP setBreakpoints specification](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_SetBreakpoints)
-- [Chrome DevTools Protocol — Debugger domain](https://chromedevtools.github.io/devtools-protocol/tot/Debugger/)
+- [Chrome DevTools Protocol — Debugger.setBreakpointByUrl](https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setBreakpointByUrl)
+- [Story 2.4 (per-cell sourceURL contract)](2-4-rerun-cells-with-fast-iteration.md)
+- [Architecture: Debugger Domain Integration](../architecture.md#debugger-domain-integration)

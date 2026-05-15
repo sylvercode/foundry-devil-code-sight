@@ -80,164 +80,97 @@ So that I can inspect stack and state without switching to browser DevTools.
 
 ### 1. Implement `threads` DAP Request Handler (AC: 1)
 
-- [ ] In `src/debug/notebook-dap-adapter.ts`, add method `onThreadsRequest(): ThreadsResponse`.
-- [ ] The response must include:
-  - A single thread object with:
-    - `id: 1` (notebook execution is single-threaded for MVP).
-    - `name: "Cell Execution"` or localized equivalent.
-  - Return `{ threads: [thread] }`.
+- [ ] In `src/debugger/notebook-dap-adapter.ts`, refine the Story 10.1 stub `threadsRequest` to keep returning `{ threads: [{ id: 1, name: localized("Notebook cells") }] }`. No new structure for MVP.
 
 ### 2. Implement `stackTrace` DAP Request Handler (AC: 1)
 
-- [ ] Add method `onStackTraceRequest(args: StackTraceArguments): StackTraceResponse`.
-- [ ] The handler must:
-  - Accept `args.threadId` (expect `1` for MVP).
-  - Query the runtime debugger for the call stack via transport layer (new method).
-  - Map each CDP call frame to a DAP `StackFrame`:
-    - `id: frameIndex` (0 for top frame, incrementing down).
-    - `name: functionName` or `"<anonymous>"` for unnamed functions.
-    - `source: { path: cellSourcePath }` (cell ID or notebook path).
-    - `line: callFrame.location.lineNumber` (adjusted for any line offset).
-    - `column: callFrame.location.columnNumber`.
-  - Return frames in order from top (most recent) to bottom (oldest).
-  - Handle case where no frames are available (e.g., paused in top-level cell code).
+- [ ] Add `stackTraceRequest(response, args)`.
+- [ ] CDP does not have a `Debugger.getCallStack` method. The full call stack is delivered as `params.callFrames` on the `Debugger.paused` event. The session manager (Story 10.1) caches the most recent paused payload per debug session; the adapter reads from that cache and never issues a new CDP call to fetch frames.
+- [ ] Map each cached `Debugger.CallFrame` to a DAP `StackFrame`:
+  - `id`: stable per-pause integer assigned by a frame manager (Task 5).
+  - `name`: `callFrame.functionName || "<anonymous>"`.
+  - `source`: `{ name: cell.label, path: cell.document.uri.toString() }` (Story 10.2 source identity).
+  - `line`: `callFrame.location.lineNumber + 1` (DAP is 1-based).
+  - `column`: `callFrame.location.columnNumber + 1`.
+- [ ] Honor `args.startFrame` and `args.levels` for paging; `totalFrames` is the cached count.
 
-### 3. Add Transport Method for Stack Retrieval (AC: 1)
+### 3. Extend `BrowserDebuggerSession` for Property Access (AC: 1, 2, 3, 4, 6)
 
-- [ ] Update `src/transport/debugger-interface.ts`:
-  - Add method `getCallStack(sessionId: string): Promise<CallFrame[]>`:
-    - Sends `Debugger.getCallStack` or equivalent via CDP.
-    - Returns array of frame objects with:
-      - `functionName: string`.
-      - `location: { lineNumber, columnNumber }`.
-      - Additional fields as needed for scope resolution.
+- [ ] No `src/transport/debugger-interface.ts`. Extend the existing `BrowserDebuggerSession` surface in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) with the methods needed by Stories 10.3–10.4. Reuse existing `chrome-remote-interface` types via `ProtocolMappingApi.Commands["Debugger.<method>"]` so we do not redeclare CDP shapes.
+  - `getProperties(params: Protocol.Runtime.GetPropertiesRequest): Promise<Protocol.Runtime.GetPropertiesResponse>` — wraps `Runtime.getProperties` on the per-target session.
+  - `evaluateOnCallFrame(params: Protocol.Debugger.EvaluateOnCallFrameRequest): Promise<Protocol.Debugger.EvaluateOnCallFrameResponse>` — wraps `Debugger.evaluateOnCallFrame`.
+  - `releaseObject(params: Protocol.Runtime.ReleaseObjectRequest): Promise<void>` — wraps `Runtime.releaseObject`, used by the variable store on resume.
+- [ ] Stack frames come from the cached `Debugger.paused` event (Task 2), so no `getCallStack` method is added.
+- [ ] Update [tests/unit/transport/browser-connect.test.ts](../../tests/unit/transport/browser-connect.test.ts) with forwarding tests for each new method.
 
 ### 4. Implement `scopes` DAP Request Handler (AC: 2)
 
-- [ ] Add method `onScopesRequest(args: ScopesArguments): ScopesResponse`.
-- [ ] The handler must:
-  - Accept `args.frameId` (correlates to stack frame index).
-  - Return a list of scope objects:
-    - Local scope: `{ name: "Local", variablesReference: <handle>, expensive: false }`.
-    - Global scope: `{ name: "Global", variablesReference: <handle>, expensive: false }`.
-  - Store the frame ID and scope type in a reference map so `onVariablesRequest()` can retrieve the correct scope.
-  - Each scope must have a unique `variablesReference` handle for tracking.
+- [ ] Add `scopesRequest(response, args)`.
+- [ ] Map the cached `CallFrame.scopeChain[]` for the requested `frameId` into DAP `Scope[]`:
+  - For each `scopeChain` entry whose `type` is `local`, `closure`, `block`, or `with`, emit one DAP scope with the original type as `presentationHint` and a localized `name`.
+  - Always append a `Global` scope backed by `callFrame.this.objectId` falling back to a session-scoped `globalThis` lookup (`Runtime.evaluate({ expression: "globalThis", returnByValue: false })` cached per pause).
+  - Each scope reserves a `variablesReference` from the variable store (Task 5) keyed by the underlying `Runtime.RemoteObject.objectId`.
+  - Set `expensive: true` for the global scope and `false` otherwise.
 
-### 5. Create Variable Handle Manager (AC: 3, 4)
+### 5. Create the Variable Store (AC: 3, 4)
 
-- [ ] Create `src/debug/variable-handler.ts`:
-  - Implement `VariableHandleManager` class that:
-    - Maintains a map of handles to variable objects: `Map<handle, VariableReference>`.
-    - Provides methods:
-      - `createHandle(frameId, scopeName): handle` → create and store a handle for a scope.
-      - `createHandle(parentHandle, propertyName): handle` → create handle for a nested property.
-      - `getVariableReference(handle): VariableReference` → retrieve the stored reference.
-      - `clearFrame(frameId): void` → remove all handles for a frame (on resume).
-    - Assign sequential numeric handles starting from `1000` (to avoid colliding with frame IDs).
+- [ ] Create `src/debugger/variable-store.ts` exporting `createVariableStore({ debuggerSession })`.
+- [ ] Responsibilities:
+  - Allocate sequential `variablesReference` handles starting at `1000`; reserve `0` for non-expandable values.
+  - Map handle → `{ objectId: string, kind: "scope" | "object" | "array" }`.
+  - Track every `objectId` ever returned during a pause so they can be released via `Runtime.releaseObject` on resume.
+  - `clearForPause()` invoked by the pause-event handler (Story 10.4) wipes handles and releases live `objectId`s.
 
 ### 6. Implement `variables` DAP Request Handler (AC: 3, 4)
 
-- [ ] Add method `onVariablesRequest(args: VariablesArguments): VariablesResponse`.
-- [ ] The handler must:
-  - Accept `args.variablesReference` (the handle).
-  - Look up the reference in the handle manager.
-  - Determine if it's a scope or nested property.
-  - If scope:
-    1. Call transport layer to fetch scope variables from runtime debugger.
-    2. For each variable, create a DAP variable object:
-       - `name: variableName`.
-       - `value: serializedValue` (JSON string, or `"[Object]"` for unserializable types).
-       - `type: runtimeType` (e.g., `"number"`, `"object"`, `"function"`).
-       - `variablesReference: handle` (if value is expandable; `0` otherwise).
-    3. Return the list.
-  - If nested property:
-    1. Fetch the nested properties from the runtime (up to depth limit).
-    2. Return nested variables.
-  - Limit results to a reasonable count (e.g., first 100 variables; show "..." for overflow).
+- [ ] Add `variablesRequest(response, args)`.
+- [ ] Resolve the handle through the variable store (Task 5).
+- [ ] Call `BrowserDebuggerSession.getProperties({ objectId, ownProperties: true, accessorPropertiesOnly: false, generatePreview: true })`.
+- [ ] For each `Runtime.PropertyDescriptor.value`:
+  - `name`: `prop.name`.
+  - `value`: passed through the formatter (Task 8) using the `RemoteObject.preview` when available.
+  - `type`: `RemoteObject.subtype || RemoteObject.type`.
+  - `variablesReference`: handle reserved via the variable store when `RemoteObject.objectId` is present and the subtype is expandable; otherwise `0`.
+- [ ] Honor `args.start` / `args.count` for paging (max page size 100, larger requests get the page and a localized truncation marker).
 
-### 7. Add Transport Method for Variable Resolution (AC: 3, 4)
+### 7. Reuse the Same Transport Method for Nested Properties (AC: 3, 4)
 
-- [ ] Update `src/transport/debugger-interface.ts`:
-  - Add method `getScopeVariables(frameId: number, scopeType: "local" | "global", sessionId: string): Promise<Variable[]>`:
-    - Sends `Runtime.getProperties` or `Debugger.evaluateOnCallFrame` via CDP.
-    - Returns array of variable objects with name, value, type.
-    - Applies serialization limits (truncate values > 10KB).
-  - Add method `getNestedProperties(objectId: string, depth: number, sessionId: string): Promise<Variable[]>`:
-    - Fetches nested properties of an object/array.
-    - Respects depth limit.
+- [ ] No additional transport method. Nested expansion calls `BrowserDebuggerSession.getProperties` with the child `objectId` resolved from the parent's `Runtime.PropertyDescriptor`. Depth is implicit: VS Code drives expansion lazily by sending a fresh `variables` request per node, so the adapter never recursively walks deep object trees on its own.
 
 ### 8. Implement Variable Serialization and Value Formatting (AC: 3, 5)
 
-- [ ] Create `src/debug/variable-formatter.ts`:
-  - Implement `formatVariableValue(cdpValue, maxLength = 10240): string`:
-    - Serialize CDP value to a display string.
-    - For primitives: return literal (e.g., `123`, `"hello"`).
-    - For objects/arrays: return placeholder (e.g., `"{...}"`, `"[...]"`).
-    - For functions: return `"[Function: name]"` or `"[Function]"`.
-    - For DOM nodes: return `"[HTMLElement]"` or similar.
-    - If serialization exceeds `maxLength`, truncate and add `"..."`
-  - Implement `getVariableType(cdpValue): string`:
-    - Return runtime type (e.g., `"number"`, `"string"`, `"object"`, `"function"`).
+- [ ] Create `src/debugger/variable-formatter.ts`:
+  - `formatRemoteObject(obj: Protocol.Runtime.RemoteObject, maxLength = 10240): string` produces the display string from CDP's existing `description` / `preview` / `value` fields. No custom JSON serialization.
+  - Functions → `"[Function: <name>]"`; nodes (`subtype === "node"`) → `obj.description`; primitives → string-coerced literal; oversize → truncated with `"…"`.
+  - `formatRemoteType(obj: Protocol.Runtime.RemoteObject): string` returns `obj.subtype ?? obj.type`.
 
 ### 9. Implement `evaluate` DAP Request Handler for Watch Expressions (AC: 6)
 
-- [ ] Add method `onEvaluateRequest(args: EvaluateArguments): EvaluateResponse`.
-- [ ] The handler must:
-  - Accept `args.expression` (the watch expression).
-  - Accept `args.frameId` (the context frame, or `-1` for top-level).
-  - Call transport layer to evaluate the expression in the paused context.
-  - Return result:
-    - `result: serializedValue`.
-    - `type: runtimeType`.
-    - `variablesReference: handle` (if expandable).
-  - If evaluation fails, return error message instead of throwing.
+- [ ] Add `evaluateRequest(response, args)`.
+- [ ] When `args.frameId` is set, call `BrowserDebuggerSession.evaluateOnCallFrame({ callFrameId, expression, returnByValue: false, generatePreview: true, throwOnSideEffect: args.context === "hover" })` using the cached `callFrameId` from the paused frame map.
+- [ ] When `args.frameId` is unset (REPL/Watch top-level while paused), still prefer `evaluateOnCallFrame` against frame 0; fall back to `Runtime.evaluate` only when there is no active pause (handled by Story 10.4).
+- [ ] On `exceptionDetails`, return the localized error string in `response.body.result` and set `presentationHint = { kind: "error" }` instead of failing the request.
 
-### 10. Add Transport Method for Expression Evaluation (AC: 6)
+### 10. (Folded into Task 3) Transport Methods Recap
 
-- [ ] Update `src/transport/debugger-interface.ts`:
-  - Add method `evaluateExpressionInFrame(expression: string, frameId: number, sessionId: string): Promise<EvaluationResult>`:
-    - Sends `Debugger.evaluateOnCallFrame` via CDP (if available).
-    - Or falls back to `Runtime.evaluate` with context object.
-    - Returns result with value, type, and object ID (for drill-down).
+- [ ] Confirm `BrowserDebuggerSession.evaluateOnCallFrame` (Task 3) is the only path used by Task 9. No `evaluateExpressionInFrame` wrapper exists.
 
-### 11. Handle Pause State and Variable Lifecycle (AC: 1–6)
+### 11. Pause/Resume Hooks for the Variable Store (AC: 1–6)
 
-- [ ] In `NotebookDAPAdapter`:
-  - Add a `paused` state flag (set when execution pauses at breakpoint).
-  - Add a method `onPaused(reason: "breakpoint" | "step" | "pause")`:
-    1. Set paused flag.
-    2. Query stack trace and cache it.
-    3. Clear old variable handles.
-    4. Send `stopped` event to VS Code with reason and `threadId: 1`.
-  - Add a method `onResumed()`:
-    1. Clear paused flag.
-    2. Clear all variable handles.
-    3. Clear cached stack trace.
-    4. Send `continued` event to VS Code.
+- [ ] The session manager (Story 10.1) already owns `Debugger.paused` subscription. On each pause it stores `callFrames` and notifies the adapter. The adapter:
+  - Caches `callFrames` keyed by `threadId: 1`.
+  - Resets the variable store before serving requests for the new pause.
+- [ ] Story 10.4 owns the `stopped` / `continued` events and the `clearForPause()` call on resume; Story 10.3 only consumes the cached frames and exposes the store API.
 
 ### 12. Add Unit Tests (AC: 1–6)
 
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-frames.test.ts`:
-  - Test `onThreadsRequest()` returns single thread with ID 1.
-  - Test `onStackTraceRequest()` with valid frame data → returns mapped frames.
-  - Test error case: no frames available → returns empty array gracefully.
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-scopes.test.ts`:
-  - Test `onScopesRequest()` returns Local and Global scopes.
-  - Test scopes have unique `variablesReference` handles.
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-variables.test.ts`:
-  - Test `onVariablesRequest()` for scope → returns list of variables.
-  - Test nested variable expansion → handles are created correctly.
-  - Test variable serialization (primitives, objects, functions).
-  - Test unsupported values (functions, DOM nodes) → return placeholders.
-  - Test limit enforcement (max 100 variables).
-- [ ] Create `tests/unit/debug/variable-formatter.test.ts`:
-  - Test `formatVariableValue()` with various types.
-  - Test truncation of large values.
-  - Test `getVariableType()` accuracy.
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-evaluate.test.ts`:
-  - Test `onEvaluateRequest()` with valid expression → returns result.
-  - Test error case: invalid expression → returns error message.
-  - Test evaluation in paused context.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-frames.test.ts`: paged `stackTrace` over a synthetic cached `Debugger.paused` payload; empty cache returns `{ stackFrames: [], totalFrames: 0 }`.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-scopes.test.ts`: `scopeChain` mapping plus appended global scope; handles allocated through the variable store.
+- [ ] `tests/unit/debugger/variable-store.test.ts`: handle allocation, kind tagging, `clearForPause` releases every tracked `objectId` exactly once.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-variables.test.ts`: scope expansion calls `getProperties` with the recorded `objectId`; nested expansion creates fresh handles; oversize page is truncated and marked.
+- [ ] `tests/unit/debugger/variable-formatter.test.ts`: primitives, functions, nodes, oversize truncation.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-evaluate.test.ts`: success path; `exceptionDetails` path; hover context sets `throwOnSideEffect: true`.
+- [ ] `tests/unit/transport/browser-connect.test.ts`: forwarding for `getProperties`, `evaluateOnCallFrame`, `releaseObject`.
 
 ### 13. Run Full Validation Suite (AC: 1–6)
 
@@ -265,46 +198,40 @@ This is the **third story in Epic 10** and focuses on surfacing execution contex
 
 ### Architecture Guardrails (Must Follow)
 
-- **Transport abstraction:** All runtime queries go through transport layer methods. DAP adapter does NOT call CDP directly.
-- **Handle management:** Use sequential numeric handles starting from `1000` to avoid conflicts. Track handle lifecycle carefully to prevent memory leaks (clear handles on resume).
-- **Value serialization:** Respect CDP limits. Never expose raw CDP `RemoteObject` structures to DAP. Always format for display.
-- **Error boundaries:** If any runtime query fails (e.g., scope resolution), return graceful error messages. Do NOT crash the debug session.
-- **Localization:** Scope names (`"Local"`, `"Global"`), placeholder strings (`"[Function]"`, `"[HTMLElement]"`), and error messages must use `vscode.l10n.t()`.
+- **Single transport surface.** The adapter must not import `chrome-remote-interface`. All CDP calls go through `BrowserDebuggerSession` (extended in Task 3). No `src/transport/debugger-interface.ts`.
+- **Stack frames are pulled from the cached `Debugger.paused` payload.** CDP has no `Debugger.getCallStack`; do not invent one.
+- **Folder is `src/debugger/`.** Created by Story 2.5, owned by Epic 10.
+- **Handle management:** Sequential numeric handles starting at `1000`. The variable store owns lifecycle and releases every `objectId` via `Runtime.releaseObject` on pause clear.
+- **Value serialization:** Use CDP's existing `description` / `preview` fields. Never expose raw `RemoteObject` to DAP. Truncate at 10240 chars.
+- **Error boundaries:** `exceptionDetails` becomes a DAP error result, never a request rejection.
+- **Localization:** Scope names, placeholders, error messages via `vscode.l10n.t()` keyed in `l10n/bundle.l10n.json`.
 
 ### Transport Layer Extensions
 
+Add to `BrowserDebuggerSession` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) (no new files):
+
 ```typescript
-interface Variable {
-  name: string;
-  value: string; // serialized
-  type: string;
-  objectId?: string; // for nested expansion
-}
+import type ProtocolMappingApi from "chrome-remote-interface/types/protocol-mapping.d.ts";
 
-export async function getScopeVariables(
-  frameId: number,
-  scopeType: "local" | "global",
-  sessionId: string,
-): Promise<Variable[]> {
-  // Implementation with CDP
-}
-
-export async function getNestedProperties(
-  objectId: string,
-  depth: number,
-  sessionId: string,
-): Promise<Variable[]> {
-  // Implementation with CDP
-}
-
-export async function evaluateExpressionInFrame(
-  expression: string,
-  frameId: number,
-  sessionId: string,
-): Promise<EvaluationResult> {
-  // Implementation with CDP
+export interface BrowserDebuggerSession {
+  // ...existing members from Story 2.5 / 10.1...
+  getProperties(
+    params: ProtocolMappingApi.Commands["Runtime.getProperties"]["paramsType"][0],
+  ): Promise<
+    ProtocolMappingApi.Commands["Runtime.getProperties"]["returnType"]
+  >;
+  evaluateOnCallFrame(
+    params: ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["paramsType"][0],
+  ): Promise<
+    ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["returnType"]
+  >;
+  releaseObject(
+    params: ProtocolMappingApi.Commands["Runtime.releaseObject"]["paramsType"][0],
+  ): Promise<void>;
 }
 ```
+
+All three methods send the underlying CDP command on the same per-target session as the existing `setBreakpointByUrl` / `removeBreakpoint` methods.
 
 ### Known Unknowns & Future Decisions
 

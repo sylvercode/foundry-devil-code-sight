@@ -81,127 +81,71 @@ So that execution control stays fully in the editor.
 
 ### 1. Implement `continue` DAP Request Handler (AC: 1)
 
-- [ ] In `src/debug/notebook-dap-adapter.ts`, add method `onContinueRequest(args: ContinueArguments): ContinueResponse`.
-- [ ] The handler must:
-  - Accept `args.threadId` (expect `1` for MVP).
-  - Call transport layer `sendDebuggerContinue(sessionId)` (new method).
-  - Update internal paused state to `false`.
-  - Return a `ContinueResponse` immediately (do NOT wait for runtime to finish execution).
-  - The runtime will emit a separate `Debugger.resumed` or `Debugger.paused` event later.
-- [ ] Handle error case: if continue fails, log and return error response.
+- [ ] In `src/debugger/notebook-dap-adapter.ts`, add `continueRequest(response, args)`.
+- [ ] Validate `args.threadId === 1` (notebook execution is single-threaded for MVP).
+- [ ] Call `BrowserDebuggerSession.resume()` (already exists from Story 2.5; reused, never bypassed).
+- [ ] Mark the session as running, clear cached pause state via the variable store's `clearForPause()` (Story 10.3).
+- [ ] Send `ContinuedEvent({ threadId: 1, allThreadsContinued: true })` and resolve the request immediately. The next pause arrives asynchronously through the `Debugger.paused` subscription owned by the session manager (Story 10.1).
+- [ ] If `resume()` rejects, return a localized DAP error response and leave the session in its prior state.
 
-### 2. Implement `next` DAP Request Handler (AC: 2)
+### 2. Implement `next` / `stepIn` / `stepOut` DAP Request Handlers (AC: 2, 3, 4)
 
-- [ ] Add method `onNextRequest(args: NextArguments): void`.
-- [ ] The handler must:
-  - Accept `args.threadId`.
-  - Call transport layer `sendDebuggerStepOver(sessionId)` (new method).
-  - Set a flag `awaitingStepCompletion: true` to ensure we don't accept new step commands.
-  - Do NOT send a response immediately. Wait for the runtime to pause again.
-  - When the runtime pauses (via `Debugger.paused` event), then send `stopped` event to VS Code.
-  - Return via the stopped event, not via the initial request response.
+- [ ] Add `nextRequest`, `stepInRequest`, `stepOutRequest`. Each handler:
+  - Validates `args.threadId === 1`.
+  - Calls the matching method on `BrowserDebuggerSession` (Task 5): `stepOver`, `stepInto`, or `stepOut`.
+  - Clears cached pause state via `clearForPause()`.
+  - Sends `ContinuedEvent` and resolves the request immediately.
+  - Sets an internal `awaitingStepCompletion = true` flag (consumed by Task 8 to suppress duplicate `stopped` events).
+- [ ] CDP does not have a `Debugger.resumed` event. The adapter relies entirely on the next `Debugger.paused` event (or session termination) as the signal that the step is complete.
 
-### 3. Implement `stepIn` DAP Request Handler (AC: 3)
+### 5. Extend `BrowserDebuggerSession` for Stepping (AC: 1–4)
 
-- [ ] Add method `onStepInRequest(args: StepInArguments): void`.
-- [ ] Similar to `onNextRequest()`:
-  - Call transport layer `sendDebuggerStepInto(sessionId)` (new method).
-  - Set `awaitingStepCompletion: true`.
-  - Wait for runtime pause and send `stopped` event.
+- [ ] Extend `BrowserDebuggerSession` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) (no new transport file). Add the three step methods alongside the existing `resume()`:
+  - `stepOver(params?: ProtocolMappingApi.Commands["Debugger.stepOver"]["paramsType"][0]): Promise<void>` — wraps `Debugger.stepOver`.
+  - `stepInto(params?: ProtocolMappingApi.Commands["Debugger.stepInto"]["paramsType"][0]): Promise<void>` — wraps `Debugger.stepInto`.
+  - `stepOut(): Promise<void>` — wraps `Debugger.stepOut`.
+- [ ] Each method sends the command on the per-target session and resolves on the CDP ack (no waiting for `Debugger.paused`).
+- [ ] Update [tests/unit/transport/browser-connect.test.ts](../../tests/unit/transport/browser-connect.test.ts) with forwarding tests for each method.
 
-### 4. Implement `stepOut` DAP Request Handler (AC: 4)
+### 6. Consume `Debugger.paused` From the Session Manager (AC: 5, 6)
 
-- [ ] Add method `onStepOutRequest(args: StepOutArguments): void`.
-- [ ] Similar structure:
-  - Call transport layer `sendDebuggerStepOut(sessionId)` (new method).
-  - Set `awaitingStepCompletion: true`.
-  - Wait for runtime pause and send `stopped` event.
+- [ ] The session manager (Story 10.1) is the sole subscriber to `BrowserDebuggerSession.onPaused`. Story 10.4 adds a typed `onPaused(handler)` registration on the session manager that the adapter uses to receive parsed pause events.
+- [ ] Adapter `handlePaused(payload)`:
+  1. Cache `payload.callFrames` for Story 10.3.
+  2. Map `payload.reason` (`"other"`, `"step"`, `"breakpoint"`, `"exception"`, `"OOM"`, etc.) to the DAP `stopped` reason vocabulary (`"step"`, `"breakpoint"`, `"exception"`, `"pause"`, `"entry"`).
+  3. If `awaitingStepCompletion` is true, override the reason to `"step"` regardless of CDP's value, then clear the flag.
+  4. Emit `StoppedEvent({ reason, threadId: 1, allThreadsStopped: true, hitBreakpointIds: payload.hitBreakpoints })`.
+- [ ] There is no `Debugger.resumed` event to subscribe to — CDP does not emit one. Resume is observable only via the next `Debugger.paused` or session termination.
 
-### 5. Add Transport Methods for Stepping Commands (AC: 1–4)
+### 7. Pause Subscription Lifecycle (AC: 5, 6)
 
-- [ ] Update `src/transport/debugger-interface.ts`:
-  - Add method `sendDebuggerContinue(sessionId: string): Promise<void>`:
-    - Sends `Debugger.resume` via CDP.
-    - Resolves immediately after command is sent.
-  - Add method `sendDebuggerStepOver(sessionId: string): Promise<void>`:
-    - Sends `Debugger.stepOver` via CDP.
-    - Resolves immediately after command is sent.
-  - Add method `sendDebuggerStepInto(sessionId: string): Promise<void>`:
-    - Sends `Debugger.stepInto` via CDP.
-    - Resolves immediately after command is sent.
-  - Add method `sendDebuggerStepOut(sessionId: string): Promise<void>`:
-    - Sends `Debugger.stepOut` via CDP.
-    - Resolves immediately after command is sent.
-  - All methods should throw descriptive errors if the command fails.
+- [ ] Subscription is owned by the session manager (Story 10.1) for the lifetime of the DAP session and disposed on `terminate`/`disconnect`. Story 10.4 only registers the adapter's handler with the manager, never with `BrowserDebuggerSession.onPaused` directly.
 
-### 6. Implement Runtime Pause Event Listener (AC: 5, 6)
+### 8. Pause Event Serialization (AC: 5)
 
-- [ ] In `NotebookDAPAdapter`:
-  - Add a method `onRuntimePaused(reason: "breakpoint" | "step" | "pause" | "entry", location)`:
-    1. Validate we are not already in a paused state (prevent duplicate pause events).
-    2. If `awaitingStepCompletion` is true, clear the flag.
-    3. Query stack trace and update cached frames.
-    4. Clear old variable handles.
-    5. Emit DAP `stopped` event with:
-       - `reason: reason` (e.g., `"step"`, `"breakpoint"`).
-       - `threadId: 1`.
-       - `text: description` (optional, e.g., `"Paused on line 42"`).
-  - Register this callback with the transport layer so it's called when runtime emits `Debugger.paused`.
+- [ ] Create `src/debugger/pause-event-serializer.ts` exporting `createPauseEventSerializer({ adapter })`.
+- [ ] Internally guard with a single in-flight Promise: each incoming `Debugger.paused` payload is appended to a queue; the serializer awaits the previous handler before invoking the next so `StoppedEvent`s are emitted in CDP arrival order.
+- [ ] Drop duplicate consecutive payloads with identical `(reason, hitBreakpoints, top callFrame.location)` to defend against CDP retries.
+- [ ] Step commands (Task 2) are queued through the same serializer so the adapter never has two outstanding step requests against V8.
 
-### 7. Create Event Subscription in Transport Layer (AC: 5, 6)
+### 9. Step Completion Without a Pause (AC: 2–5, 6)
 
-- [ ] Update `src/transport/debugger-interface.ts` or `src/transport/browser-connect.ts`:
-  - Add a method `subscribeToDebuggerEvents(sessionId: string, callbacks)`:
-    - Registers a callback object with methods:
-      - `onPaused(pauseInfo): void`.
-      - `onResumed(): void`.
-  - On the underlying CDP client:
-    - Listen for `Debugger.paused` events and call `onPaused()` with event data.
-    - Listen for `Debugger.resumed` events and call `onResumed()`.
-  - Store these listeners so they can be cleaned up when debug session ends.
+- [ ] No client-side timeout. If the program runs to completion after a step, V8 will not send another `Debugger.paused`. Termination is observed independently:
+  - A target detached / connection lost event from the transport surfaces a DAP `terminated` event via the session manager (Story 10.1).
+  - Without termination and without pause, the session legitimately stays in the running state — VS Code's UI handles this correctly.
+- [ ] Do NOT introduce a synthetic timeout that emits `terminated`; that would race with normal long-running scripts.
 
-### 8. Implement Pause Event Queuing (AC: 5)
+### 10. Pause Capability Hardening (AC: 6)
 
-- [ ] In `NotebookDAPAdapter`:
-  - Maintain a `pauseEventQueue: PauseEvent[]` to handle rapid pause events.
-  - When a pause event arrives:
-    1. If `currentlyProcessing` is false, process immediately.
-    2. If `currentlyProcessing` is true, enqueue the event.
-  - After processing each event, dequeue and process the next (FIFO).
-  - This ensures deterministic ordering and prevents dropped events.
-
-### 9. Handle Step Completion and State Synchronization (AC: 2–4, 5)
-
-- [ ] After each step command:
-  - Start a timeout (e.g., 5 seconds) waiting for the runtime to pause again.
-  - If timeout expires, log warning but don't crash.
-  - If runtime pauses before timeout, process the pause event immediately.
-  - If runtime emits error (e.g., execution completed without pausing), emit `terminated` event.
-
-### 10. Test Running-to-Completion Scenario (AC: 6)
-
-- [ ] Handle case where user clicks "Step" but code runs to completion:
-  - Runtime will emit `Debugger.paused` with reason `"other"` or similar, or will not emit `paused` at all.
-  - Adapter must handle both gracefully.
-  - If no pause occurs within timeout, emit `terminated` event to VS Code.
+- [ ] Update Story 10.1's `initialize` capability set to enable `supportsRestartFrame: false`, `supportsStepBack: false`, `supportsTerminateThreadsRequest: false`. Stepping is implicitly supported — no DAP capability flag is required for `next`/`stepIn`/`stepOut`/`continue`.
+- [ ] Optional explicit `pause` request (DAP `pauseRequest`) calls `client.send("Debugger.pause", ..., sessionId)` via a new `BrowserDebuggerSession.pause()` method (add alongside step methods in Task 5). On success, the next `Debugger.paused` becomes the user-initiated pause.
 
 ### 11. Add Unit Tests (AC: 1–6)
 
-- [ ] Create `tests/unit/debug/notebook-dap-adapter-stepping.test.ts`:
-  - Test `onContinueRequest()` calls transport and updates state.
-  - Test `onNextRequest()` sets `awaitingStepCompletion` and waits for pause event.
-  - Test `onStepInRequest()` similar to `onNextRequest()`.
-  - Test `onStepOutRequest()` similar to `onNextRequest()`.
-  - Test error case: stepping fails → error response is returned.
-  - Test rapid stepping: queue events properly and maintain order.
-  - Test pause event drops after timeout → emit `terminated`.
-- [ ] Create `tests/unit/debug/pause-event-queue.test.ts` (if queue is in separate module):
-  - Test FIFO ordering of queued pause events.
-  - Test processing state flag.
-  - Test event dequeuing and processing.
-- [ ] Create `tests/integration/debug/stepping-integration.test.ts` (if integration tests exist):
-  - Test full stepping cycle: pause → step → receive new pause event → continue.
-  - Test rapid stepping with multiple commands in sequence.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-stepping.test.ts`: each of `continue`/`next`/`stepIn`/`stepOut` calls the matching `BrowserDebuggerSession` method exactly once, emits `ContinuedEvent`, and resolves immediately; failure paths return localized DAP errors.
+- [ ] `tests/unit/debugger/pause-event-serializer.test.ts`: rapid pause arrivals are emitted in order; duplicate consecutive payloads collapse; step + pause interleaving never overlaps two handlers.
+- [ ] `tests/unit/debugger/notebook-dap-adapter-paused.test.ts`: `awaitingStepCompletion` flag overrides CDP reason to `"step"`; CDP `"breakpoint"` reason maps verbatim with `hitBreakpointIds` populated; `"exception"` maps to `"exception"`.
+- [ ] `tests/unit/transport/browser-connect.test.ts` (update): forwarding tests for `stepOver`/`stepInto`/`stepOut`/`pause`.
 
 ### 12. Run Full Validation Suite (AC: 1–6)
 
@@ -228,29 +172,33 @@ This is the **fourth story in Epic 10** and focuses on execution control (steppi
 
 ### Architecture Guardrails (Must Follow)
 
-- **Asynchronous stepping:** Stepping commands return immediately to VS Code; actual pause events come later via `stopped` event. This is correct DAP behavior. Do NOT block waiting for step completion in the request handler.
-- **Event ordering:** Use a queue to preserve FIFO ordering of pause events. Do NOT process events out of order or in parallel.
-- **State consistency:** The adapter's paused state must always match the runtime's state. If desynchronization is detected (e.g., pause event but state says not paused), log a warning and force resynchronization.
-- **Error handling:** If stepping fails, emit an error response. If running-to-completion fails, emit a `terminated` event (not an error).
-- **Transport abstraction:** All stepping commands go through transport layer methods. DAP adapter does NOT call CDP directly.
-- **Timeout management:** Use a reasonable timeout for step completion (5 seconds is typical). Log warnings if exceeded but don't crash.
+- **No `Debugger.resumed`.** The CDP `Debugger` domain does not emit a `resumed` event. The DAP `ContinuedEvent` is sent by the adapter immediately after issuing the resume/step command. The next observable runtime event is either `Debugger.paused` or session termination.
+- **Asynchronous stepping.** Stepping requests resolve immediately; the next `StoppedEvent` arrives asynchronously through the session manager's `Debugger.paused` subscription.
+- **Single transport surface.** All stepping commands go through `BrowserDebuggerSession` (extended in Task 5). No `src/transport/debugger-interface.ts`. No direct `client.send("Debugger.*", ...)` outside `src/transport/`.
+- **Folder is `src/debugger/`.** Created by Story 2.5, owned by Epic 10.
+- **Event ordering.** Pause events and step requests are funneled through `pause-event-serializer.ts` so the adapter never has two outstanding handlers.
+- **No client-side step timeout.** A step that completes without pausing simply leaves the session running until the program ends or a breakpoint is hit; termination is signaled by transport, not by a synthetic timer.
+- **Localization.** All error messages via `vscode.l10n.t()` keyed in `l10n/bundle.l10n.json`.
 
 ### Transport Layer Extensions
 
-```typescript
-export async function sendDebuggerContinue(sessionId: string): Promise<void>;
-export async function sendDebuggerStepOver(sessionId: string): Promise<void>;
-export async function sendDebuggerStepInto(sessionId: string): Promise<void>;
-export async function sendDebuggerStepOut(sessionId: string): Promise<void>;
+Add to `BrowserDebuggerSession` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts):
 
-export function subscribeToDebuggerEvents(
-  sessionId: string,
-  callbacks: {
-    onPaused(info: DebuggerPausedInfo): void;
-    onResumed(): void;
-  },
-): Subscription;
+```typescript
+export interface BrowserDebuggerSession {
+  // ...existing members from Story 2.5 / 10.1 / 10.2 / 10.3...
+  stepOver(
+    params?: ProtocolMappingApi.Commands["Debugger.stepOver"]["paramsType"][0],
+  ): Promise<void>;
+  stepInto(
+    params?: ProtocolMappingApi.Commands["Debugger.stepInto"]["paramsType"][0],
+  ): Promise<void>;
+  stepOut(): Promise<void>;
+  pause(): Promise<void>; // optional, for explicit DAP pauseRequest
+}
 ```
+
+`resume()` is already exposed by Story 2.5; the adapter reuses it for `continueRequest`.
 
 ### Known Unknowns & Future Decisions
 
