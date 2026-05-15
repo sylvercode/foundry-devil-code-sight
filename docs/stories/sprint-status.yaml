@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-05-11T00:00:01Z
+last_updated: 2026-05-14T00:00:02Z
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -54,14 +54,14 @@ development_status:
   epic-1-retrospective: done
 
   # ── Epic 2: Execute JavaScript Cells (No Intentional Capture) ─────────────
-  epic-2: in-progress
+  epic-2: done
   2-1-run-synchronous-javascript-cells: done
   2-2-run-asynchronous-javascript-cells: done
   2-3-normalize-success-and-failure-output-contracts: done
   2-spike-cdp-sourceurl-debugger: done
   2-4-support-fast-rerun-and-iteration-patterns: done
   2-5-enable-source-level-breakpoint-debugging: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ── Epic 3: Capture Intentional Logs ─────────────────────────────────────
   epic-3: backlog

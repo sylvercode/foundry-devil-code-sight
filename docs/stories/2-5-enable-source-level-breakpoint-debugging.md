@@ -229,7 +229,7 @@ Any user-visible diagnostic emitted by Story 2.5 must go through `vscode.l10n.t(
 - [x] `npm run test` — all unit tests pass including new tests.
 - [x] `npm run compile` — clean TypeScript compilation (strict mode).
 - [x] `npm run test:integration:cdp` — passes when Chromium is available (skip is acceptable in environments without Chromium per existing precedent).
-- [ ] Manual smoke check (post-build) in the Extension Development Host:
+- [x] Manual smoke check (post-build) in the Extension Development Host:
   1. Open a `.ipynb`, select the Browser Kernel controller on a JavaScript cell.
   2. Set a gutter breakpoint on a line of a cell.
   3. Run the connect command against a Chromium target with the page open.

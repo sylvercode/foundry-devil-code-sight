@@ -172,12 +172,12 @@ So that I can validate browser state and behavior directly from notebook cells.
 - [x] Run `npm run lint` — no new warnings or errors.
 - [x] Run `npm run test:unit` — all unit tests pass including new tests.
 - [x] Run `npm run compile` — clean compilation with no type errors.
-- [ ] Manually verify in Extension Development Host (if available):
-  - [ ] Open a `.ipynb` notebook with Jupyter extension installed.
-  - [ ] Select "Browser Kernel" as the kernel.
-  - [ ] Run a cell with `2 + 2` while connected → see `4` inline.
-  - [ ] Run a cell with `throw new TypeError("boom")` → see structured error inline.
-  - [ ] Run a cell while disconnected → see reconnect prompt error.
+- [x] Manually verify in Extension Development Host (if available):
+  - [x] Open a `.ipynb` notebook with Jupyter extension installed.
+  - [x] Select "Browser Kernel" as the kernel.
+  - [x] Run a cell with `2 + 2` while connected → see `4` inline.
+  - [x] Run a cell with `throw new TypeError("boom")` → see structured error inline.
+  - [x] Run a cell while disconnected → see reconnect prompt error.
 
 ## Dev Notes
 
