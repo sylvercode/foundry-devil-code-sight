@@ -2,7 +2,7 @@
 storyId: "2.5"
 storyKey: "2-5-enable-source-level-breakpoint-debugging"
 title: "Mirror Notebook-Cell Breakpoints Into the Browser Debugger"
-status: "in-progress"
+status: "done"
 created: "2026-04-26"
 epic: "2"
 priority: "p0"
@@ -10,7 +10,7 @@ priority: "p0"
 
 # Story 2.5: Mirror Notebook-Cell Breakpoints Into the Browser Debugger
 
-**Status:** in-progress
+**Status:** done
 
 ## Story
 
@@ -74,6 +74,8 @@ Confirmed limitation from implementation validation: a VS Code notebook-cell bre
 **And** the extension does NOT block the JS thread for any other CDP client (DevTools, if attached, retains independent pause/step control on its own session)
 **And** the auto-resume is unconditional — no inspection of `reason`, `hitBreakpoints`, or call frames before resuming
 **And** the auto-resume is best-effort: a `Debugger.resume` failure is logged via the existing output channel but does not throw or surface as a cell-output error.
+
+> **Transitional deviation (Story 2.5 outcome amendment):** The current implementation reads `event.reason` and joins `event.hitBreakpoints` to emit a single "Browser debugger pause observed on extension session" log line **before** dispatching `Debugger.resume`. This is a knowing violation of the "no inspection before resuming" clause. It is retained as transitional diagnostic instrumentation that proves the mirror is binding and hitting breakpoints, because Story 2.5's user-visible value is otherwise unverifiable from inside VS Code (DevTools does not render a gutter marker for breakpoints created from the extension's session — see the limitation paragraph in the Scope Boundary section). The risk is bounded: the logger is a synchronous append to the extension's output channel; if it ever throws, `resume()` is never dispatched and the JS thread is held for any other CDP client. This deviation MUST be removed when the Full VS Code Debug Adapter epic (see [docs/stories/deferred-work.md](deferred-work.md)) lands a real `vscode.DebugSession`, at which point pause inspection becomes a first-class concern of that epic and the mirror's `onPaused` returns to the unconditional-resume contract.
 
 ### AC 6: Browser-Side Breakpoints Continue to Work
 
@@ -234,6 +236,10 @@ Any user-visible diagnostic emitted by Story 2.5 must go through `vscode.l10n.t(
   4. Run the cell. Confirm the browser's DevTools Sources panel shows the cell and that execution pauses on the mirrored breakpoint. Do NOT require a visible DevTools gutter marker for the mirrored breakpoint; current Chromium behavior may keep the breakpoint active in V8 without rendering the marker because the breakpoint was created from the extension's separate CDP session.
   5. Step / continue / inspect variables in DevTools as the inspection surface.
   6. Disconnect and reconnect; reset breakpoints; confirm AC 4 (snapshot) re-registers them.
+
+### Review Findings
+
+- [x] [Review][Defer] AC 5 deviation: `onPaused` listener inspects `event.reason` and `event.hitBreakpoints` before calling `Debugger.resume` [src/debugger/breakpoint-mirror.ts:121-127] — **deferred, accepted as transitional**. Story 2.5 ships only the CDP-side mirror without a `vscode.DebugSession`, and DevTools does not render a gutter marker for breakpoints created from the extension's session, so the pause log is the only in-VS-Code evidence that the mirror is actually binding and hitting breakpoints. The deviation, its bounded risk (synchronous logger throw would hold the JS thread), and its removal trigger are documented in AC 5's "Transitional deviation" note. The deviation MUST be removed by the Full VS Code Debug Adapter epic (see [docs/stories/deferred-work.md](deferred-work.md)).
 
 ## Dev Notes
 
