@@ -1,4 +1,4 @@
-import test, { after, before } from "node:test";
+import test, { after, afterEach, before } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import CDP from "chrome-remote-interface";
@@ -53,6 +53,12 @@ before(async () => {
 });
 
 after(async () => {
+  await disconnectActiveBrowserConnection();
+
+  if (chromiumStop) {
+    await chromiumStop();
+  }
+
   await new Promise<void>((resolve) => {
     if (!appServer) {
       resolve();
@@ -63,10 +69,10 @@ after(async () => {
       resolve();
     });
   });
+});
 
-  if (chromiumStop) {
-    await chromiumStop();
-  }
+afterEach(async () => {
+  await disconnectActiveBrowserConnection();
 });
 
 test(

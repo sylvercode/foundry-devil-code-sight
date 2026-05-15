@@ -145,6 +145,15 @@ function createFakeConnection(
     targetId: "target-1",
     sessionId: "session-1",
     endpoint: { host: "localhost", port: 9222 },
+    debugger: {
+      setBreakpointByUrl: async () => ({
+        breakpointId: "bp-1",
+        locations: [],
+      }),
+      removeBreakpoint: async () => undefined,
+      resume: async () => undefined,
+      onPaused: () => ({ dispose: () => undefined }),
+    },
     evaluate,
     terminateExecution: async () => undefined,
     close: async () => undefined,
