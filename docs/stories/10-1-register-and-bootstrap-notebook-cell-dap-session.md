@@ -173,7 +173,7 @@ So that VS Code can treat notebook-cell code as a debuggable program surface.
 - [x] `npm run test`.
 - [x] `npm run compile`.
 - [x] `RUN_CDP_INTEGRATION=1 npm run test:integration:cdp` — without the env var the integration suite silently skips and produces a false pass.
-- [ ] Manual smoke: open a notebook with the Browser Kernel, connect, set a breakpoint, press F5, confirm the debug session reaches the DAP `initialized` state and disconnects cleanly. (Breakpoint _binding_ arrives in Story 10.2.)
+- [x] Manual smoke: open a notebook with the Browser Kernel, connect, set a breakpoint, press F5, confirm the debug session reaches the DAP `initialized` state and disconnects cleanly. (Breakpoint _binding_ arrives in Story 10.2.)
 
 ## Dev Notes
 
