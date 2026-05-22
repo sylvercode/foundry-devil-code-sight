@@ -113,6 +113,7 @@ export class NotebookDebugAdapter
     await this.sessionManager.terminate();
     response.success = true;
     this.sendResponse(response);
+    this.sendEvent(new TerminatedEvent());
   }
 
   public override dispose(): void {

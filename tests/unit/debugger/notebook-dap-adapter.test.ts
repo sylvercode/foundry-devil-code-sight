@@ -133,3 +133,30 @@ test("threads returns the single notebook-cells thread", async () => {
 
   harness.adapter.dispose();
 });
+
+test("terminate emits terminated event so one stop cleanly ends session", async () => {
+  let terminateCalls = 0;
+
+  const harness = createHarness(
+    createSessionManager({
+      terminate: async () => {
+        terminateCalls += 1;
+      },
+    }),
+  );
+
+  const response = await harness.sendRequest("terminate", {});
+
+  assert.equal(response.success, true);
+  assert.equal(terminateCalls, 1);
+
+  const terminatedEvents = harness.sentMessages.filter(
+    (message) =>
+      message.type === "event" &&
+      (message as DebugProtocol.Event).event === "terminated",
+  );
+
+  assert.equal(terminatedEvents.length, 1);
+
+  harness.adapter.dispose();
+});
