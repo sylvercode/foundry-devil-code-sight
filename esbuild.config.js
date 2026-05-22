@@ -20,7 +20,13 @@ const buildOptions = {
     entryPoints: ['src/extension.ts'],
     bundle: true,
     outfile: 'dist/extension.mjs',
-    external: ['vscode', 'chrome-remote-interface', 'ws'],
+    external: [
+        'vscode',
+        'chrome-remote-interface',
+        'ws',
+        '@vscode/debugadapter',
+        '@vscode/debugprotocol'
+    ],
     format: 'esm',
     platform: 'node',
     target: 'node20',

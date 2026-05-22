@@ -20,7 +20,6 @@
   "main": "./dist/extension.mjs",
   "l10n": "./l10n",
   "activationEvents": [
-    "onCommand:jupyterBrowserKernel.connect",
     "onDebug:jupyter-browser-kernel"
   ],
   "extensionDependencies": [],
@@ -34,6 +33,17 @@
             "type": "jupyter-browser-kernel",
             "request": "launch",
             "name": "%debugger.jupyterBrowserKernel.launch.label%"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%debugger.jupyterBrowserKernel.snippet.label%",
+            "description": "%debugger.jupyterBrowserKernel.snippet.description%",
+            "body": {
+              "type": "jupyter-browser-kernel",
+              "request": "launch",
+              "name": "%debugger.jupyterBrowserKernel.launch.label%"
+            }
           }
         ],
         "configurationAttributes": {
