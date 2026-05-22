@@ -55,6 +55,8 @@ type DebuggerRemoveBreakpointParams =
 type DebuggerPausedEvent = ProtocolMappingApi.Events["Debugger.paused"][0];
 
 export interface BrowserDebuggerSession {
+  enable: () => Promise<void>;
+  disable: () => Promise<void>;
   setBreakpointByUrl: (
     params: Pick<
       DebuggerSetBreakpointByUrlParams,
@@ -120,6 +122,12 @@ export function createBrowserDebuggerSession(
   sessionId: string,
 ): BrowserDebuggerSession {
   return {
+    enable: async () => {
+      await client.send("Debugger.enable", undefined, sessionId);
+    },
+    disable: async () => {
+      await client.send("Debugger.disable", undefined, sessionId);
+    },
     setBreakpointByUrl: async (params) =>
       (await client.send(
         "Debugger.setBreakpointByUrl",
@@ -497,26 +505,6 @@ async function connectViaBrowserTargetAttach(
     } catch (error) {
       await safeDetachFromTarget(client, attachResult.sessionId);
       throw createStepError("Runtime.evaluate(probe)", error);
-    }
-
-    try {
-      await withAbortSignal(
-        client.send("Debugger.enable", undefined, attachResult.sessionId),
-        abortSignal,
-        localize,
-      );
-    } catch (error) {
-      await safeDetachFromTarget(client, attachResult.sessionId);
-      throw createStepError(
-        "Debugger.enable",
-        new Error(
-          localize({
-            message: "Failed to enable Debugger domain on browser session: {0}",
-            args: [getErrorMessage(error)],
-            comment: ["{0} is the CDP Debugger.enable failure message."],
-          }),
-        ),
-      );
     }
 
     throwIfCanceled(abortSignal, localize);

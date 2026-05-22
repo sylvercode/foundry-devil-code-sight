@@ -30,6 +30,26 @@ export interface ConnectionStoreHandler {
   onErrorContextChanged?: (context: ConnectionErrorContext | undefined) => void;
 }
 
+const connectionStateListeners = new Set<(state: ConnectionState) => void>();
+let canonicalConnectionStateStore: ConnectionStateStore | undefined;
+
+export function getCanonicalConnectionStateStore():
+  | ConnectionStateStore
+  | undefined {
+  return canonicalConnectionStateStore;
+}
+
+export function onDidChangeConnectionState(
+  listener: (state: ConnectionState) => void,
+): { dispose: () => void } {
+  connectionStateListeners.add(listener);
+  return {
+    dispose: () => {
+      connectionStateListeners.delete(listener);
+    },
+  };
+}
+
 export function createConnectionStateStore({
   initialState,
   onConnectionStateChanged,
@@ -49,6 +69,9 @@ export function createConnectionStateStore({
     state = nextState;
     history.push(nextState);
     onConnectionStateChanged?.(nextState);
+    for (const listener of connectionStateListeners) {
+      listener(nextState);
+    }
   };
 
   const setErrorContext = (context: ConnectionErrorContext | undefined) => {
@@ -56,7 +79,7 @@ export function createConnectionStateStore({
     onErrorContextChanged?.(context);
   };
 
-  return {
+  const store: ConnectionStateStore = {
     getState: () => state ?? "disconnected",
     setState,
     getHistory: () => [...history],
@@ -87,6 +110,9 @@ export function createConnectionStateStore({
       };
     },
   };
+
+  canonicalConnectionStateStore = store;
+  return store;
 }
 
 export async function withConnectTransition<T>(
