@@ -81,78 +81,98 @@ So that VS Code can treat notebook-cell code as a debuggable program surface.
 - [ ] Delete [src/debugger/breakpoint-mirror.ts](../../src/debugger/breakpoint-mirror.ts) and its `index.ts` re-export.
 - [ ] Remove the mirror construction, `connectionStateStore` subscription, and `breakpointMirror.dispose()` push from [src/extension.ts](../../src/extension.ts).
 - [ ] Remove the unconditional `Debugger.enable` call from `connectViaBrowserTargetAttach` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) and remove the post-attach categorization for that step. Keep `BrowserDebuggerSession` and the `debugger` field on `ActiveBrowserConnection` — those stay for the DAP adapter to consume.
-- [ ] Delete the now-unused l10n keys for the mirror's auto-resume / mirror-failure log lines in [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json). Keep the `Debugger.enable` failure key — Story 10.1 reuses it under the DAP path.
+- [ ] Delete the following now-unused mirror l10n keys from [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json):
+  - `"Failed to mirror notebook-cell breakpoint to browser: {0}"`
+  - `"Mirrored notebook-cell breakpoint registered in browser: {0}"`
+  - `"Failed to remove notebook-cell breakpoint from browser: {0}"`
+  - `"Failed to auto-resume browser debugger after pause: {0}"`
+  - `"Browser debugger pause observed on extension session: {0}"`
+    Keep `"Failed to enable Debugger domain on browser session: {0}"` — Story 10.1 reuses it under the DAP path.
 - [ ] Delete [tests/unit/debugger/breakpoint-mirror.test.ts](../../tests/unit/debugger/breakpoint-mirror.test.ts) and the integration test that exercised the mirror. Update [tests/unit/transport/browser-connect.test.ts](../../tests/unit/transport/browser-connect.test.ts) so attach no longer asserts a `Debugger.enable` call.
 - [ ] Update [docs/stories/deferred-work.md](deferred-work.md): mark the "Full VS Code Debug Adapter for cell debugging" entry as resolved by Epic 10.
 
-### 2. Create Debug Configuration Provider (AC: 1, 2, 5)
+### 2. Declare `jupyter-browser-kernel` Debug Type Contribution (AC: 1, 2)
+
+- [ ] Add a `contributes.debuggers` array to [package.json](../../package.json) with a single entry of `type: "jupyter-browser-kernel"` and a `label` that uses an `nls` key (e.g. `"%debugger.jupyterBrowserKernel.label%"` resolved from [package.nls.json](../../package.nls.json)).
+- [ ] Provide an `initialConfigurations` array containing a single launch entry: `{ type: "jupyter-browser-kernel", request: "launch", name: "%debugger.jupyterBrowserKernel.launch.label%" }`.
+- [ ] Provide an empty `configurationAttributes.launch.properties` object (no required fields for v1).
+- [ ] Do NOT set `program` / `runtime` — the adapter is provided exclusively via `DebugAdapterDescriptorFactory` (Task 3) using `DebugAdapterInlineImplementation`, so VS Code does not need to spawn an external process.
+- [ ] Add the two new `debugger.jupyterBrowserKernel.*` keys to [package.nls.json](../../package.nls.json) (manifest-time strings live there, not in `bundle.l10n.json`).
+
+### 3. Create Debug Configuration Provider (AC: 1, 2, 5)
 
 - [ ] Create `src/debugger/debug-config-provider.ts` implementing `vscode.DebugConfigurationProvider`:
   - `resolveDebugConfiguration(folder, config, token)` ensures `type === "jupyter-browser-kernel"`, `request` defaults to `"launch"`, and `name` defaults to a localized label.
   - Reject the configuration with a localized error if `getActiveBrowserConnection()` returns `undefined`.
 - [ ] Register the provider in `activate(...)` via `vscode.debug.registerDebugConfigurationProvider("jupyter-browser-kernel", provider)` and push the disposable into `context.subscriptions`.
+- [ ] Note: dropdown presence is supplied by the Task 2 `contributes.debuggers` entry (always present); runtime gating (no active browser connection) happens here in `resolveDebugConfiguration` and surfaces as a localized error per AC 5.
 
-### 3. Create Debug Adapter Descriptor Factory (AC: 2, 3, 6)
+### 4. Create Debug Adapter Descriptor Factory (AC: 2, 3, 6)
 
 - [ ] Create `src/debugger/debug-adapter-factory.ts` implementing `vscode.DebugAdapterDescriptorFactory`:
   - `createDebugAdapterDescriptor(session, executable)` returns `new vscode.DebugAdapterInlineImplementation(adapter)` where `adapter` is a `NotebookDebugAdapter` instance bound to the active `BrowserDebuggerSession`.
   - Reject startup if `getActiveBrowserConnection()?.debugger` is unavailable.
 - [ ] Register via `vscode.debug.registerDebugAdapterDescriptorFactory("jupyter-browser-kernel", factory)`.
 
-### 4. Create Debug Session Manager (AC: 3, 4, 5, 6)
+### 5. Create Debug Session Manager (AC: 3, 4, 5, 6)
 
 - [ ] Create `src/debugger/debug-session-manager.ts` exporting `createDebugSessionManager({ getDebuggerSession, logger })`.
 - [ ] Responsibilities:
-  - On `launch` request: call `debuggerSession.enable()` (new method on `BrowserDebuggerSession` — see Task 5), subscribe to `onPaused`, transition to `running`.
+  - On `launch` request: call `debuggerSession.enable()` (new method on `BrowserDebuggerSession` — see Task 6), subscribe to `onPaused`, transition to `running`.
   - On `terminate` / `disconnect`: dispose the `onPaused` subscription, call `debuggerSession.disable()`, clear all state.
-  - Surface `Debugger.enable` failure as a localized DAP `launch` error response (AC 5) — reuse the failure key from the deleted mirror.
-  - Subscribe to `connectionStateStore` so a transport-level disconnect during an active session emits a DAP `terminated` event with reason `connection-lost` (AC 3).
+  - Surface `Debugger.enable` failure as a localized DAP `launch` error response (AC 5) — reuse the `"Failed to enable Debugger domain on browser session: {0}"` key.
+  - Subscribe to the canonical store exported from [src/transport/connection-state.ts](../../src/transport/connection-state.ts) (the same `connectionStateStore` consumed elsewhere in the extension). Filter to `disconnected` / `error` transitions and emit a DAP `terminated` event with reason `connection-lost` **exactly once per session** (guard against re-emission if the store re-fires).
 
-### 5. Extend `BrowserDebuggerSession` With `enable` / `disable` (AC: 3)
+### 6. Extend `BrowserDebuggerSession` With `enable` / `disable` (AC: 3)
 
 - [ ] In [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts), add `enable(): Promise<void>` and `disable(): Promise<void>` to `BrowserDebuggerSession`, wrapping `client.send("Debugger.enable", undefined, sessionId)` / `client.send("Debugger.disable", undefined, sessionId)`.
 - [ ] Update [tests/unit/transport/browser-connect.test.ts](../../tests/unit/transport/browser-connect.test.ts) with forwarding tests for both methods.
 
-### 6. Create Notebook Debug Adapter Skeleton (AC: 2, 3, 6)
+### 7. Create Notebook Debug Adapter Skeleton (AC: 2, 3, 6)
 
+- [ ] Add `@vscode/debugadapter` and `@vscode/debugprotocol` to `dependencies` in [package.json](../../package.json) at the latest stable matching version. Run `npm install` and commit the resulting lockfile changes before authoring this file (Task 12 will fail to compile otherwise).
 - [ ] Create `src/debugger/notebook-dap-adapter.ts` implementing `vscode.DebugAdapter`:
   - Internally use `@vscode/debugadapter` (`DebugSession` base class) so DAP request dispatch is provided.
   - Implement only the lifecycle handlers in this story: `initialize`, `launch`, `attach` (alias to `launch`), `disconnect`, `terminate`, `threads`. Frame, scope, variable, breakpoint, and stepping handlers are stubbed and ship in Stories 10.2–10.4.
   - `initialize` returns capabilities: `supportsBreakpointLocationsRequest: true`, `supportsConfigurationDoneRequest: true`, `supportsTerminateRequest: true`, `supportTerminateDebuggee: false`, `supportsEvaluateForHovers: true`. Other capabilities default to `false`.
-  - `launch` delegates to the session manager (Task 4); on success emits `InitializedEvent`. On failure emits a localized `ErrorResponse`.
+  - `launch` delegates to the session manager (Task 5); on success emits `InitializedEvent`. On failure emits a localized `ErrorResponse`.
   - `threads` returns a single thread `{ id: 1, name: "Notebook cells" }`.
   - `disconnect` / `terminate` delegate to the session manager and resolve immediately; the manager handles `Debugger.disable`.
 
-### 7. Wire Activation Event and Extension Bootstrap (AC: 2, 4)
+### 8. Wire Activation Event and Extension Bootstrap (AC: 2, 4)
 
-- [ ] Add `"onDebug:jupyter-browser-kernel"` to `package.json` `activationEvents`.
+- [ ] Add an `activationEvents` array to [package.json](../../package.json) (the field does not currently exist) containing **both** `"onCommand:jupyterBrowserKernel.connect"` (the existing baseline activation that is currently implicit via the contributed command) and `"onDebug:jupyter-browser-kernel"` (new). Do not drop the command activation.
 - [ ] Update [.github/copilot-instructions.md](../../.github/copilot-instructions.md) "Stable Technical Constraints" to allow this activation event explicitly.
 - [ ] In [src/extension.ts](../../src/extension.ts), construct the session manager, debug-config provider, and adapter descriptor factory, register them, and push their disposables into `context.subscriptions`.
 
-### 8. Localization (AC: 5)
+### 9. Localization (AC: 5)
 
-- [ ] Add localized strings to [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json) for: `"Browser Kernel Debug"`, `"Cannot start debug session: connect to a browser target first."`, `"Failed to enable Debugger domain on browser session: {0}"` (reuse existing key), `"Browser connection lost; debug session terminated."`.
-- [ ] No new `package.nls.json` entries.
+- [ ] Add the following runtime-localized strings to [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json):
+  - `"Browser Kernel Debug"` (debug-config default name)
+  - `"Cannot start debug session: connect to a browser target first."` (AC 5 resolve-time error)
+  - `"Browser connection lost; debug session terminated."` (AC 3 terminated reason)
+- [ ] Reuse the existing `"Failed to enable Debugger domain on browser session: {0}"` key — do not duplicate it.
+- [ ] Manifest-time strings (`debugger.jupyterBrowserKernel.label`, `debugger.jupyterBrowserKernel.launch.label`) are added in Task 2 to `package.nls.json`. No other `package.nls.json` entries are needed.
 
-### 9. Unit Tests (AC: 1, 2, 3, 4, 5, 6)
+### 10. Unit Tests (AC: 1, 2, 3, 4, 5, 6)
 
 - [ ] `tests/unit/debugger/debug-config-provider.test.ts`: provider sets defaults; rejects with localized error when no active connection.
 - [ ] `tests/unit/debugger/debug-session-manager.test.ts`: `launch` calls `enable()` then subscribes to `onPaused`; `terminate` disposes subscription then calls `disable()`; `enable()` rejection is surfaced via the registered logger and re-thrown for the DAP path; transport `disconnected` event during a session triggers a `terminated` callback exactly once.
 - [ ] `tests/unit/debugger/notebook-dap-adapter.test.ts`: `initialize` capabilities snapshot; `launch` failure produces an `ErrorResponse` with the localized message; `threads` returns the single thread shape.
 - [ ] `tests/unit/debugger/decommission.test.ts` (or update existing transport tests): assert that `connectViaBrowserTargetAttach` does NOT call `Debugger.enable` and that `ActiveBrowserConnection.debugger.enable` / `disable` exist and forward correctly.
 
-### 10. Integration Test (AC: 2, 3, 6)
+### 11. Integration Test (AC: 2, 3, 6)
 
 - [ ] `tests/integration/debugger/dap-session-lifecycle.integration.test.ts` (gated by `RUN_CDP_INTEGRATION=1`, reuses `tests/integration/helpers/headless-chromium.ts`):
   - Start headless Chromium, connect, then drive a synthetic DAP client through `initialize` → `launch` → `threads` → `disconnect`.
   - Assert that `Debugger.enable` is sent on `launch` and `Debugger.disable` is sent on `disconnect`, and that no `Debugger.paused` listener remains afterward.
 
-### 11. Validation
+### 12. Validation
 
 - [ ] `npm run lint`.
 - [ ] `npm run test`.
 - [ ] `npm run compile`.
-- [ ] `npm run test:integration:cdp`.
+- [ ] `RUN_CDP_INTEGRATION=1 npm run test:integration:cdp` — without the env var the integration suite silently skips and produces a false pass.
 - [ ] Manual smoke: open a notebook with the Browser Kernel, connect, set a breakpoint, press F5, confirm the debug session reaches the DAP `initialized` state and disconnects cleanly. (Breakpoint _binding_ arrives in Story 10.2.)
 
 ## Dev Notes
@@ -177,10 +197,10 @@ Breakpoint binding, frame inspection, variable scoping, and stepping are Stories
 
 - **DAP libraries:** Use `@vscode/debugprotocol` for types and `@vscode/debugadapter` for the `DebugSession` base class.
 - **Adapter transport:** Use `vscode.DebugAdapterInlineImplementation` (no TCP / pipe / port management). The adapter runs in-process inside the extension.
-- **Layer boundaries:** The DAP adapter must NOT import `chrome-remote-interface`. It reaches CDP only through `BrowserDebuggerSession` on `ActiveBrowserConnection.debugger`. If a new CDP command is needed, add it to `BrowserDebuggerSession` first.
+- **Layer boundaries:** The DAP adapter must NOT import `chrome-remote-interface`. It reaches CDP only through `BrowserDebuggerSession` on `ActiveBrowserConnection.debugger`.
 - **Session ownership:** One `NotebookDebugAdapter` instance per debug run, created by the descriptor factory. No singletons. The session manager owns `Debugger.enable` / `Debugger.disable` and the `onPaused` subscription for the duration of the session.
-- **Error localization:** All user-facing strings via `vscode.l10n.t()`; runtime keys in `l10n/bundle.l10n.json`, no `package.nls.json` additions.
-- **Activation:** Add `onDebug:jupyter-browser-kernel`. Update `.github/copilot-instructions.md` to reflect the new allowed activation event.
+- **Error localization:** Runtime user-facing strings via `vscode.l10n.t()` with keys in `l10n/bundle.l10n.json`. Manifest strings (e.g. the `contributes.debuggers` label added in Task 2) live in `package.nls.json`.
+- **Activation:** Add `onDebug:jupyter-browser-kernel` while preserving `onCommand:jupyterBrowserKernel.connect`. Update `.github/copilot-instructions.md` to reflect the new allowed activation event.
 
 ### Testing Strategy
 
@@ -200,6 +220,7 @@ Breakpoint binding, frame inspection, variable scoping, and stepping are Stories
 1. **DAP capabilities set:** Capabilities will be extended in Stories 10.2–10.4 as request handlers land.
 2. **Thread abstraction:** Notebook-cell debugging uses a single thread per session. Future multi-cell parallelism may require a thread pool abstraction.
 3. **Source identity for `Source` payloads:** Story 10.2 defines how `vscode-notebook-cell://…` URIs map onto DAP `Source` objects; 10.1 only stubs the threads list.
+4. **Concurrent debug sessions against the same browser target:** Out of scope for 10.1. Because `Debugger.enable` is a single per-target switch, two parallel `vscode.DebugSession` instances against the same `ActiveBrowserConnection` would race on `enable()` / `disable()`. Do not add reference counting now; Story 10.5 (dual-client coexistence) will validate and address this.
 
 ### Related Documentation
 
