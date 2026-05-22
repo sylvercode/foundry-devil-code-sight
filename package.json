@@ -20,7 +20,8 @@
   "main": "./dist/extension.mjs",
   "l10n": "./l10n",
   "activationEvents": [
-    "onDebug:jupyter-browser-kernel"
+    "onDebug:jupyter-browser-kernel",
+    "onDebugResolve:jupyter-browser-kernel"
   ],
   "extensionDependencies": [],
   "contributes": {

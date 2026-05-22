@@ -5,12 +5,7 @@ import type * as vscode from "vscode";
 import { DebugConfigProvider } from "../../../src/debugger/debug-config-provider.js";
 
 test("resolveDebugConfiguration sets launch defaults", () => {
-  const provider = new DebugConfigProvider({
-    getActiveConnection: () =>
-      ({
-        debugger: {},
-      }) as never,
-  });
+  const provider = new DebugConfigProvider();
 
   const resolved = provider.resolveDebugConfiguration(undefined, {
     type: "jupyter-browser-kernel",
@@ -22,12 +17,7 @@ test("resolveDebugConfiguration sets launch defaults", () => {
 });
 
 test("resolveDebugConfiguration preserves provided request and name", () => {
-  const provider = new DebugConfigProvider({
-    getActiveConnection: () =>
-      ({
-        debugger: {},
-      }) as never,
-  });
+  const provider = new DebugConfigProvider();
 
   const resolved = provider.resolveDebugConfiguration(undefined, {
     type: "jupyter-browser-kernel",
@@ -39,14 +29,14 @@ test("resolveDebugConfiguration preserves provided request and name", () => {
   assert.equal(resolved?.name, "Custom");
 });
 
-test("resolveDebugConfiguration rejects when no active browser connection exists", () => {
-  const provider = new DebugConfigProvider({
-    getActiveConnection: () => undefined,
-  });
+test("resolveDebugConfiguration does not reject when disconnected", () => {
+  const provider = new DebugConfigProvider();
 
-  assert.throws(() => {
-    provider.resolveDebugConfiguration(undefined, {
-      type: "jupyter-browser-kernel",
-    } as vscode.DebugConfiguration);
-  }, /Cannot start debug session: connect to a browser target first\./);
+  const resolved = provider.resolveDebugConfiguration(undefined, {
+    type: "jupyter-browser-kernel",
+  } as vscode.DebugConfiguration) as vscode.DebugConfiguration;
+
+  assert.equal(resolved.type, "jupyter-browser-kernel");
+  assert.equal(resolved.request, "launch");
+  assert.equal(resolved.name, "Browser Kernel Debug");
 });

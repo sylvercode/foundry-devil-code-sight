@@ -1,17 +1,8 @@
 import type * as vscode from "vscode";
 
-import {
-  getActiveBrowserConnection,
-  type ActiveBrowserConnection,
-} from "../transport/browser-connect";
 import type { Localize } from "../config/endpoint-config";
 
-export type GetActiveBrowserConnection = () =>
-  | ActiveBrowserConnection
-  | undefined;
-
 export interface DebugConfigProviderOptions {
-  getActiveConnection?: GetActiveBrowserConnection;
   localize?: Localize;
 }
 
@@ -21,12 +12,9 @@ const defaultLocalize = ((messageOrOptions: string | { message: string }) =>
     : messageOrOptions.message) as Localize;
 
 export class DebugConfigProvider implements vscode.DebugConfigurationProvider {
-  private readonly getActiveConnection: GetActiveBrowserConnection;
   private readonly localize: Localize;
 
   public constructor(options: DebugConfigProviderOptions = {}) {
-    this.getActiveConnection =
-      options.getActiveConnection ?? getActiveBrowserConnection;
     this.localize = options.localize ?? defaultLocalize;
   }
 
@@ -36,14 +24,6 @@ export class DebugConfigProvider implements vscode.DebugConfigurationProvider {
   ): vscode.ProviderResult<vscode.DebugConfiguration> {
     if (config.type && config.type !== "jupyter-browser-kernel") {
       return config;
-    }
-
-    if (!this.getActiveConnection()) {
-      throw new Error(
-        this.localize(
-          "Cannot start debug session: connect to a browser target first.",
-        ),
-      );
     }
 
     const resolvedConfig: vscode.DebugConfiguration = {

@@ -52,15 +52,6 @@ export class DebugAdapterFactory
   public createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    const activeConnection = this.getActiveConnection();
-    if (!activeConnection?.debugger) {
-      throw new Error(
-        vscode.l10n.t(
-          "Cannot start debug session: connect to a browser target first.",
-        ),
-      );
-    }
-
     const manager = this.createSessionManager({
       getDebuggerSession: () => this.getActiveConnection()?.debugger,
       logger: this.logger,
