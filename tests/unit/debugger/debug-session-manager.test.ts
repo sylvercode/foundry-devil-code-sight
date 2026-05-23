@@ -144,3 +144,58 @@ test("connection-state disconnected transition emits terminated exactly once", a
   subscription.dispose();
   manager.dispose();
 });
+
+test("connection lost during enable rejects launch and disables session without leaving running state", async () => {
+  const connectionStateStore = createConnectionStateStore();
+
+  const state: FakeSessionState = {
+    sequence: [],
+    failEnable: false,
+  };
+
+  const baseSession = createFakeDebuggerSession(state);
+  let resolveEnable: (() => void) | undefined;
+  const session = {
+    ...baseSession,
+    enable: async () => {
+      state.sequence.push("enable-start");
+      await new Promise<void>((resolve) => {
+        resolveEnable = resolve;
+      });
+      state.sequence.push("enable-end");
+    },
+  };
+
+  const manager = createDebugSessionManager({
+    getDebuggerSession: () => session,
+    logger: () => undefined,
+  });
+
+  const reasons: string[] = [];
+  const subscription = manager.onDidTerminate((reason) => {
+    reasons.push(reason);
+  });
+
+  const launchPromise = manager.launch();
+
+  await Promise.resolve();
+  assert.ok(resolveEnable, "enable must be awaiting");
+
+  connectionStateStore.setState("disconnected");
+  resolveEnable!();
+
+  await assert.rejects(
+    launchPromise,
+    /Browser connection lost; debug session terminated\./,
+  );
+
+  assert.deepEqual(state.sequence, ["enable-start", "enable-end", "disable"]);
+  assert.deepEqual(reasons, []);
+
+  connectionStateStore.setState("disconnected");
+  await Promise.resolve();
+  assert.deepEqual(reasons, []);
+
+  subscription.dispose();
+  manager.dispose();
+});

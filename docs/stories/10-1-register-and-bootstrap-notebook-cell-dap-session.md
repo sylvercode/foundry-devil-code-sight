@@ -2,7 +2,7 @@
 storyId: "10.1"
 storyKey: "10-1-register-and-bootstrap-notebook-cell-dap-session"
 title: "Register and Bootstrap Notebook-Cell DAP Session"
-status: "in-progress"
+status: "done"
 created: "2026-05-11"
 epic: "10"
 priority: "p0-blocker"
@@ -15,7 +15,7 @@ dependencies:
 
 # Story 10.1: Register and Bootstrap Notebook-Cell DAP Session
 
-**Status:** in-progress
+**Status:** done
 
 ## Story
 
@@ -174,6 +174,16 @@ So that VS Code can treat notebook-cell code as a debuggable program surface.
 - [x] `npm run compile`.
 - [x] `RUN_CDP_INTEGRATION=1 npm run test:integration:cdp` — without the env var the integration suite silently skips and produces a false pass.
 - [x] Manual smoke: open a notebook with the Browser Kernel, connect, set a breakpoint, press F5, confirm the debug session reaches the DAP `initialized` state and disconnects cleanly. (Breakpoint _binding_ arrives in Story 10.2.)
+
+### Review Findings
+
+- [x] [Review][Patch] Hardcoded thread name `"Notebook cells"` is user-visible but not localized — violates coding standards [src/debugger/notebook-dap-adapter.ts:94] — fixed: routed through `this.localize(...)` and added bundle entry
+- [x] [Review][Patch] `TerminatedEvent` can fire twice when connection is lost then VS Code issues `terminateRequest` — violates Task 5 "exactly once per session" guard [src/debugger/notebook-dap-adapter.ts:109-142] — fixed: introduced `sendTerminatedOnce` guard; both emission paths route through it
+- [x] [Review][Patch] Connection loss during the `await session.enable()` window is silently missed (`running` is still `false`, so the state-change listener returns early), producing a zombie session — violates AC 3 graceful-termination guarantee [src/debugger/debug-session-manager.ts:113-165] — fixed: track in-flight `lostDuringEnable` flag; after `enable()` resolves, disable session and reject `launch()` with the localized connection-lost message
+- [x] [Review][Dismiss] DebugConfigProvider does not call `getActiveBrowserConnection()` — spec literal Task 3, but manual EDH verification (scenarios A/B/C/D on 2026-05-23) showed the localized "Cannot start debug session: connect to a browser target first." message is surfaced correctly from `DebugSessionManager.launch()` instead, with no UX glitch. AC 5 intent satisfied; layer mismatch only.
+- [x] [Review][Dismiss] `activationEvents` does not list `onCommand:jupyterBrowserKernel.connect` — false positive: VS Code auto-adds `onCommand:*` for every contributed command, and listing it explicitly produces a redundancy warning. Task 8 wording is incorrect on this point; copilot-instructions corrected in this review.
+- [x] [Review][Defer] Two concurrent `vscode.DebugSession` instances against the same `ActiveBrowserConnection` race on `enable()`/`disable()` and emit two `connection-lost` terminations [src/debugger/debug-adapter-factory.ts:52-66, src/debugger/debug-session-manager.ts:113-127] — deferred, explicitly out of scope per Story 10.1 Dev Notes (Story 10.5 covers dual-client coexistence)
+- [x] [Review][Defer] `connectionStateListeners` set is iterated while `setState` dispatches, and listeners may add/remove subscriptions during dispatch — pre-existing module behavior, not introduced by this story [src/transport/connection-state.ts:72-75] — deferred, pre-existing
 
 ## Dev Notes
 

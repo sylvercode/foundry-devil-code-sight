@@ -68,7 +68,9 @@ function createHarness(sessionManager: DebugSessionManager): Harness {
   };
 }
 
-function createSessionManager(overrides: Partial<DebugSessionManager>): DebugSessionManager {
+function createSessionManager(
+  overrides: Partial<DebugSessionManager>,
+): DebugSessionManager {
   return {
     launch: async () => undefined,
     disconnect: async () => undefined,
@@ -149,6 +151,35 @@ test("terminate emits terminated event so one stop cleanly ends session", async 
 
   assert.equal(response.success, true);
   assert.equal(terminateCalls, 1);
+
+  const terminatedEvents = harness.sentMessages.filter(
+    (message) =>
+      message.type === "event" &&
+      (message as DebugProtocol.Event).event === "terminated",
+  );
+
+  assert.equal(terminatedEvents.length, 1);
+
+  harness.adapter.dispose();
+});
+
+test("connection-lost followed by terminate emits terminated event exactly once", async () => {
+  let terminationListener: ((reason: "connection-lost") => void) | undefined;
+
+  const harness = createHarness(
+    createSessionManager({
+      onDidTerminate: (listener) => {
+        terminationListener = listener;
+        return { dispose: () => undefined };
+      },
+    }),
+  );
+
+  assert.ok(terminationListener, "adapter must subscribe to onDidTerminate");
+  terminationListener?.("connection-lost");
+
+  const response = await harness.sendRequest("terminate", {});
+  assert.equal(response.success, true);
 
   const terminatedEvents = harness.sentMessages.filter(
     (message) =>

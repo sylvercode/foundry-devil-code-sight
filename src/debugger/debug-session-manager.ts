@@ -140,9 +140,17 @@ export function createDebugSessionManager({
 
       emittedConnectionLost = false;
 
+      let lostDuringEnable = false;
+      const lostDuringEnableSub = onDidChangeConnectionState((state) => {
+        if (state === "disconnected" || state === "error") {
+          lostDuringEnable = true;
+        }
+      });
+
       try {
         await session.enable();
       } catch (error) {
+        lostDuringEnableSub.dispose();
         logger(
           "Failed to enable Debugger domain on browser session: {0}",
           error,
@@ -152,6 +160,18 @@ export function createDebugSessionManager({
             "Failed to enable Debugger domain on browser session: {0}",
             toErrorMessage(error),
           ),
+        );
+      }
+      lostDuringEnableSub.dispose();
+
+      if (lostDuringEnable) {
+        try {
+          await session.disable();
+        } catch {
+          // Best-effort cleanup; connection is already gone.
+        }
+        throw new Error(
+          localize("Browser connection lost; debug session terminated."),
         );
       }
 

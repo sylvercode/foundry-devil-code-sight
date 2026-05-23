@@ -31,6 +31,7 @@ export class NotebookDebugAdapter
   private readonly localize: Localize;
   private readonly terminationSubscription: vscode.Disposable;
   private disposed = false;
+  private terminatedEmitted = false;
 
   public constructor({
     sessionManager,
@@ -44,6 +45,14 @@ export class NotebookDebugAdapter
         this.emitTermination(reason);
       },
     );
+  }
+
+  private sendTerminatedOnce(event: TerminatedEvent): void {
+    if (this.terminatedEmitted) {
+      return;
+    }
+    this.terminatedEmitted = true;
+    this.sendEvent(event);
   }
 
   protected override initializeRequest(
@@ -92,7 +101,7 @@ export class NotebookDebugAdapter
   ): void {
     response.success = true;
     response.body = {
-      threads: [new Thread(1, "Notebook cells")],
+      threads: [new Thread(1, this.localize("Notebook cells"))],
     };
     this.sendResponse(response);
   }
@@ -113,7 +122,7 @@ export class NotebookDebugAdapter
     await this.sessionManager.terminate();
     response.success = true;
     this.sendResponse(response);
-    this.sendEvent(new TerminatedEvent());
+    this.sendTerminatedOnce(new TerminatedEvent());
   }
 
   public override dispose(): void {
@@ -129,7 +138,7 @@ export class NotebookDebugAdapter
 
   private emitTermination(reason: DebugSessionTerminationReason): void {
     if (reason === "connection-lost") {
-      this.sendEvent(
+      this.sendTerminatedOnce(
         new TerminatedEvent({
           reason: "connection-lost",
           description: this.localize(
