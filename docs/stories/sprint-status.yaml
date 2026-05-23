@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-02
-last_updated: 2026-05-14T00:00:02Z
+last_updated: 2026-05-14T00:00:05Z
 project: jupyter-browser-kernel
 project_key: NOKEY
 tracking_system: file-system
@@ -114,3 +114,12 @@ development_status:
   9-2-validate-placeholder-resolution-and-cancellation-paths: backlog
   9-3-surface-prompt-diagnostics-and-recovery-guidance: backlog
   epic-9-retrospective: optional
+
+  # ── Epic 10: Full VS Code Debugging Experience (Post-MVP Core) ───────────
+  epic-10: backlog
+  10-1-register-and-bootstrap-notebook-cell-dap-session: ready-for-dev
+  10-2-verify-and-bind-notebook-cell-breakpoints-in-vs-code-ui: ready-for-dev
+  10-3-surface-stack-frames-scopes-and-variables-in-vs-code: ready-for-dev
+  10-4-implement-stepping-controls-and-pause-lifecycle-synchronization: ready-for-dev
+  10-5-validate-dual-client-coexistence-and-reliability: ready-for-dev
+  epic-10-retrospective: optional

@@ -39,7 +39,7 @@ If the PRD and the existing code disagree, preserve working code unless the task
 - CDP client library: `chrome-remote-interface`.
 - Bundling: esbuild to a single ESM extension entry (`dist/extension.mjs`).
 - Notebook dependency: `ms-toolsai.jupyter` is NOT in `extensionDependencies`. It was removed because no current code calls Jupyter APIs and the dependency forced the extension into the container workspace host, blocking CDP access. When the NotebookController is implemented (Epic 2), users need Jupyter installed, but it does not need to be a hard extension dependency — `vscode.notebooks.createNotebookController` is a core VS Code API.
-- Activation event should remain scoped to `onCommand:jupyterBrowserKernel.connect` unless requirements change.
+- Activation events: `onCommand:jupyterBrowserKernel.connect` is the baseline. Epic 10 broadens this to also include `onDebug:jupyter-browser-kernel` so the DAP adapter can activate when a debug session starts. Add additional activation events only when requirements change.
 - Settings use the `jupyterBrowserKernel.*` namespace.
 
 Current contributed settings from `package.json` are:

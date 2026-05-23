@@ -53,3 +53,9 @@ Foundry users can adopt notebook-first macro iteration with starter examples and
 Users can inject prompted placeholder values before execution for dynamic, repeatable notebook runs without manual code edits.
 **FRs covered:** FR37
 **Depends on:** Epic 1, Epic 2
+
+## Epic 10: Full VS Code Debugging Experience (Post-MVP Core)
+
+Users can debug notebook cells fully inside VS Code with verified breakpoints, pause and step controls, call stack, variables, and watches, while preserving browser DevTools coexistence.
+**FRs covered:** FR39
+**Depends on:** Epic 1, Epic 2

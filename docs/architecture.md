@@ -28,6 +28,7 @@ inputDocuments:
   - docs/ux-spec/10-component-strategy.md
   - docs/ux-spec/11-ux-consistency-patterns.md
   - docs/ux-spec/12-responsive-design-accessibility.md
+  - docs/epics/epic-10-full-vscode-debugging-experience-post-mvp-core.md
 workflowType: architecture
 project_name: jupyter-browser-kernel
 user_name: Sylvercode
@@ -202,13 +203,12 @@ Per-cell source identity contract:
 
 Debugger lifecycle:
 
-- `Debugger.enable` is invoked on each page session at session attach time, alongside existing `Runtime.enable` setup (Diagnostic Observer posture, validated by the spike Q3).
-- The extension does not own a breakpoint UI. Breakpoint authoring is owned by VS Code (notebook-cell gutter breakpoints) and by the browser's Sources panel. The extension only listens.
-- VS Code-side notebook-cell breakpoints are mirrored into the page via `Debugger.setBreakpointByUrl`, using the cell document URI as the `url` (the same value emitted as `//# sourceURL=`). The mirror is driven by `vscode.debug.breakpoints` and `vscode.debug.onDidChangeBreakpoints`; the extension never invents breakpoints of its own.
-- A mirrored breakpoint created from the extension's debugger session is considered active when V8 binds and hits it. Chromium DevTools may still omit a visible gutter marker for that breakpoint in the Sources panel because the marker UI is session-local, so marker visibility is not part of the mirror contract.
+- The transport exposes a `BrowserDebuggerSession` surface on `ActiveBrowserConnection.debugger` (introduced by Story 2.5) that wraps the per-target flat session and surfaces `setBreakpointByUrl`, `removeBreakpoint`, `resume`, `onPaused`, and the additional commands required by Epic 10. This surface is the single channel through which higher layers reach the Debugger domain — direct `client.send("Debugger.*", …)` calls outside the transport are forbidden.
+- `Debugger.enable` is NOT called at session attach. The DAP session manager (Epic 10, Story 10.1) is the sole owner of `Debugger.enable` / `Debugger.disable`, scoped to the lifetime of an active `vscode.DebugSession`. Outside an active debug session, the extension's per-target session does not receive `Debugger.paused` events, which removes the need for any always-on auto-resume behavior.
+- Breakpoint authoring lives in VS Code (notebook-cell gutter breakpoints). The DAP adapter (Story 10.2) translates DAP `setBreakpoints` requests into `Debugger.setBreakpointByUrl` calls keyed off `cell.document.uri.toString()` — the same value Story 2.4 emits as `//# sourceURL=`. There is no always-on `vscode.debug.onDidChangeBreakpoints` mirror; breakpoint sync is driven by DAP requests during an active debug session only.
 - Browser-side breakpoints set directly in the Sources panel continue to fire without extension involvement, because the sourceURL contract is honored.
-- Any `Debugger.paused` event delivered to the extension's session is auto-resumed on that session, so the extension never holds the JS thread on behalf of another CDP client (Q3 caveat).
-- Pause inspection (paused-line marker, Variables / Call Stack / Watch panels, step controls) happens in the browser's DevTools, not in VS Code. Surfacing pause inspection inside VS Code requires registering a Debug Adapter Protocol (DAP) adapter and is tracked as deferred work, not part of FR38's MVP scope.
+- Pause ownership during a debug session belongs to the DAP adapter: it receives `Debugger.paused`, emits the DAP `stopped` event, and only resumes when VS Code issues `continue`/`next`/`stepIn`/`stepOut`. DevTools coexistence is preserved by the flat-session multiplex (Spike Q3) — DevTools' own session retains independent pause/step control.
+- Post-MVP core (FR39) is delivered by Epic 10 (DAP adapter). The adapter must preserve CDP flat-session coexistence and must not regress external DevTools interoperability.
 
 Evaluation strategy and `replMode`:
 
@@ -711,3 +711,123 @@ No critical or important validation issues were found that require architectural
 
 **First Implementation Priority:**
 npx --package yo --package generator-code -- yo code --extensionType ts --bundler esbuild --pkgManager npm --skipOpen
+
+## Epic 10 Addendum: Full VS Code Debugging Experience
+
+### Scope Alignment
+
+This addendum formalizes post-MVP core architecture decisions for FR39 and Epic 10 so notebook-cell debugging becomes a first-class VS Code-native experience through a dedicated DAP adapter while preserving existing CDP multiplexing and browser DevTools coexistence.
+
+### Architectural Decisions
+
+- Introduce a dedicated debug-adapter layer under core platform boundaries rather than embedding DAP concerns in notebook or transport modules.
+- Keep transport as the single owner of CDP session routing and browser attachment lifecycle; the DAP adapter consumes transport services, never bypasses them.
+- Use notebook-cell URI/source identity as the canonical breakpoint key, preserving stability across reruns.
+- Keep debugger pause ownership in VS Code debug UX for Epic 10 paths; do not mirror paused-state UI into notebook output channels.
+- Maintain deterministic event ordering contracts between runtime pause/resume events and DAP stopped/continued events.
+
+### New Module Boundaries
+
+Add the DAP boundary inside the existing `src/debugger/` folder (created by Story 2.5; the always-on mirror module is decommissioned by Story 10.1):
+
+- src/debugger/
+  - debug-session-manager.ts (DAP session bootstrap, `Debugger.enable`/`disable` ownership, teardown, reconnect-safe lifecycle)
+  - notebook-dap-adapter.ts (DAP request/response/event orchestration)
+  - breakpoint-registry.ts (DAP `setBreakpoints` ↔ `Debugger.setBreakpointByUrl` reconciliation, runtime breakpoint id mapping)
+  - stackframe-mapper.ts (runtime frame to notebook-cell source mapping)
+  - variable-store.ts (stable variable handles, scope paging, defensive expansion)
+  - stepping-controller.ts (continue/next/stepIn/stepOut command routing)
+  - pause-event-serializer.ts (deterministic ordering and dedupe)
+  - index.ts
+
+Integration rules:
+
+- src/notebook may request debug run lifecycle but must not implement DAP protocol details.
+- src/transport remains the only module issuing raw debugger-domain CDP commands. The `BrowserDebuggerSession` surface on `ActiveBrowserConnection.debugger` is extended (not duplicated) for the additional commands Epic 10 needs (`getCallStack`, `getProperties`, `evaluateOnCallFrame`, `stepOver`/`stepInto`/`stepOut`, etc.).
+- src/debugger must consume `BrowserDebuggerSession` and shared normalized error helpers; it must not import `chrome-remote-interface` directly.
+- Story 2.5's `src/debugger/breakpoint-mirror.ts` and its `connectionStateStore`-driven wiring are removed by Story 10.1 — they are superseded by the DAP-owned breakpoint registry.
+
+### Story-to-Architecture Mapping
+
+Story 10.1 (bootstrap and teardown):
+
+- debug-session-manager owns adapter startup, failure diagnostics, and deterministic resource disposal.
+- debug-session-manager owns `Debugger.enable` on session start and `Debugger.disable` on session end (transferred from Story 2.5's always-on attach-time enablement).
+- Story 10.1 decommissions Story 2.5's `src/debugger/breakpoint-mirror.ts`, removes its wiring from `src/extension.ts`, and removes the unconditional `Debugger.enable` call from `connectViaBrowserTargetAttach`.
+- session restart after stop must be explicit and idempotent.
+
+Story 10.2 (breakpoint verification and binding):
+
+- breakpoint-registry translates DAP setBreakpoints to runtime breakpoints using canonical notebook-cell source URLs.
+- verified breakpoint responses must include mapped runtime line confirmation.
+- stale runtime breakpoints are removed on every sync pass.
+
+Story 10.3 (stack/scopes/variables):
+
+- stackframe-mapper normalizes runtime frames to notebook-cell source coordinates.
+- variable-store issues stable integer handles and enforces bounded expansion behavior.
+- unsupported runtime values return explicit diagnostic placeholders, never adapter crashes.
+
+Story 10.4 (stepping and lifecycle sync):
+
+- stepping-controller maps DAP control requests to runtime debugger commands.
+- pause-event-serializer enforces ordered stopped and continued delivery to avoid duplicate/orphan VS Code states.
+
+Story 10.5 (dual-client coexistence):
+
+- multiplexed flat-session strategy remains mandatory and unchanged.
+- adapter must never force-detach peer debugger clients.
+- pause handling must avoid deadlock by ensuring adapter state transitions are non-blocking and resumable.
+
+### Runtime Contracts
+
+Debugger session contract:
+
+- One active DAP session per debug run target in extension scope.
+- Session startup either reaches ready state with verified breakpoints or fails loudly with actionable diagnostics.
+
+Breakpoint contract:
+
+- Canonical key: notebook cell source identity from sourceURL-compatible URI.
+- Line mapping must preserve user-visible line semantics despite wrapper code.
+- Breakpoint enable, disable, edit, and removal are idempotent operations.
+
+Pause/step contract:
+
+- Runtime paused events map to exactly one DAP stopped event.
+- Resume/step commands emit continued exactly once per transition.
+- Out-of-order runtime events are serialized before DAP emission.
+
+### Reliability and Testing Requirements
+
+Add Epic 10 test coverage domains:
+
+- tests/contract/debug-adapter/
+  - dap-session-contract.test.ts
+  - breakpoint-sync-contract.test.ts
+  - pause-ordering-contract.test.ts
+- tests/integration/debugger-flow/
+  - bootstrap-teardown.integration.test.ts
+  - breakpoint-hit-and-step.integration.test.ts
+  - dual-client-coexistence.integration.test.ts
+
+Required deterministic scenarios:
+
+- adapter startup failure diagnostics
+- breakpoint verify and rebind on cell edits
+- stackframe and variable expansion on pause
+- continue/stepIn/stepOut/next ordering
+- VS Code + DevTools concurrent attach and stepping
+
+### Risks and Mitigations
+
+- Risk: line mapping drift from execution wrappers.
+  - Mitigation: centralize mapping in stackframe-mapper and validate with fixture-based line-accuracy tests.
+- Risk: duplicate stopped states from burst pause events.
+  - Mitigation: pause-event-serializer with sequence guards and dedupe keys.
+- Risk: session leaks after repeated debug runs.
+  - Mitigation: debug-session-manager deterministic disposal and restart-path integration tests.
+
+### Implementation Readiness for Epic 10
+
+Epic 10 is architecture-ready with explicit ownership, contracts, and test gates. Implementation can proceed story-by-story without revisiting core transport boundaries or coexistence strategy.

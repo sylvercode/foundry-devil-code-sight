@@ -12,6 +12,8 @@ priority: "p0"
 
 **Status:** done
 
+> **Superseded at runtime by Epic 10 (Sprint Change Proposal 2026-05-15).** Story 10.1 deletes [src/debugger/breakpoint-mirror.ts](../../src/debugger/breakpoint-mirror.ts), removes the unconditional attach-time `Debugger.enable`, and retires the auto-resume-on-paused invariant. The `BrowserDebuggerSession` transport surface introduced here is retained and extended by Epic 10. The story remains `done` as a historical record of the mirror posture; do not start new work against the behavior described below \u2014 follow Stories 10.1\u201310.5 instead.
+
 ## Story
 
 As a developer,
