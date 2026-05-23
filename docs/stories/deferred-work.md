@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 10-1-register-and-bootstrap-notebook-cell-dap-session (2026-05-23)
+
+- Two concurrent `vscode.DebugSession` instances against the same `ActiveBrowserConnection` race on `Debugger.enable`/`Debugger.disable` and emit two `connection-lost` terminations. Explicitly out of scope for Story 10.1; Story 10.5 (dual-client coexistence) is expected to address this with reference counting or session arbitration.
+- `connectionStateListeners` set is iterated inside `setState` while listeners may add or remove subscriptions during dispatch. Pre-existing transport-module behavior, not introduced by Story 10.1; defer until a transport-layer cleanup story addresses listener-dispatch safety holistically.
+
 ## Deferred from: code review of 1-2-configure-browser-endpoint (2026-04-04)
 
 - `isLoopbackHost` does not cover the `127.x.x.x` block or IPv6 variants (`::ffff:127.0.0.1`, `0:0:0:0:0:0:0:1`) — these are displayed as `[redacted-host]` instead of the raw loopback address. Expanded loopback display classification deferred to post-MVP.

@@ -19,8 +19,41 @@
   ],
   "main": "./dist/extension.mjs",
   "l10n": "./l10n",
+  "activationEvents": [
+    "onDebug:jupyter-browser-kernel",
+    "onDebugResolve:jupyter-browser-kernel"
+  ],
   "extensionDependencies": [],
   "contributes": {
+    "debuggers": [
+      {
+        "type": "jupyter-browser-kernel",
+        "label": "%debugger.jupyterBrowserKernel.label%",
+        "initialConfigurations": [
+          {
+            "type": "jupyter-browser-kernel",
+            "request": "launch",
+            "name": "%debugger.jupyterBrowserKernel.launch.label%"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%debugger.jupyterBrowserKernel.snippet.label%",
+            "description": "%debugger.jupyterBrowserKernel.snippet.description%",
+            "body": {
+              "type": "jupyter-browser-kernel",
+              "request": "launch",
+              "name": "%debugger.jupyterBrowserKernel.launch.label%"
+            }
+          }
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "properties": {}
+          }
+        }
+      }
+    ],
     "commands": [
       {
         "command": "jupyterBrowserKernel.connect",
@@ -126,6 +159,8 @@
     "test:integration:cdp": "npm run test:compile && RUN_CDP_INTEGRATION=1 node scripts/run-node-tests.mjs out/tests/integration"
   },
   "dependencies": {
+    "@vscode/debugadapter": "^1.68.0",
+    "@vscode/debugprotocol": "^1.68.0",
     "chrome-remote-interface": "^0.34.0",
     "ws": "^8.17.1"
   },

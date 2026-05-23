@@ -22,13 +22,10 @@ import {
 import { createConnectionLogger } from "./logging/connection-logger";
 import { createKernelTransportFailureReporter } from "./logging/kernel-transport-failure-reporter";
 import { createConnectionStatusIndicator } from "./ui/connection-status-indicator";
-import {
-  disconnectActiveBrowserConnection,
-  getActiveBrowserConnection,
-} from "./transport/browser-connect";
+import { disconnectActiveBrowserConnection } from "./transport/browser-connect";
 import { registerKernelController } from "./notebook";
 import { registerToggleCellIsolationCommand } from "./commands/toggle-cell-isolation-command";
-import { createBreakpointMirror } from "./debugger";
+import { DebugAdapterFactory, DebugConfigProvider } from "./debugger";
 
 const ACTIVE_NOTEBOOK_USES_BROWSER_KERNEL_CONTEXT_KEY =
   "jupyterBrowserKernel.activeNotebookUsesBrowserKernel";
@@ -62,14 +59,6 @@ export function activate(context: vscode.ExtensionContext): void {
     onConnectionStateChanged: (state) => {
       statusIndicator.setState(state);
       logger.onConnectionStateChanged(state);
-
-      if (state === "connected") {
-        void breakpointMirror?.syncFromVsCode();
-      }
-
-      if (state === "disconnected" || state === "error") {
-        breakpointMirror?.clearMapping();
-      }
     },
     onErrorContextChanged: (context) => {
       statusIndicator.setErrorContext(context);
@@ -123,20 +112,29 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(kernelController);
 
-  const breakpointMirror = createBreakpointMirror({
-    debugApi: vscode.debug,
-    getDebuggerSession: () => getActiveBrowserConnection()?.debugger,
-    logger: (message, error) => {
-      const renderedMessage = vscode.l10n.t(message, String(error ?? ""));
-      outputChannel.appendLine(renderedMessage);
-    },
-  });
+  const debugLogger = (message: string, error?: unknown): void => {
+    outputChannel.appendLine(vscode.l10n.t(message, String(error ?? "")));
+  };
 
-  context.subscriptions.push({
-    dispose: () => {
-      breakpointMirror.dispose();
-    },
+  const debugConfigProvider = new DebugConfigProvider({
+    localize: vscode.l10n.t,
   });
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider(
+      "jupyter-browser-kernel",
+      debugConfigProvider,
+    ),
+  );
+
+  const debugAdapterFactory = new DebugAdapterFactory({
+    logger: debugLogger,
+  });
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      "jupyter-browser-kernel",
+      debugAdapterFactory,
+    ),
+  );
 
   const selectedNotebookUris = new Set<string>();
   const syncActiveNotebookKernelContext = (): void => {
