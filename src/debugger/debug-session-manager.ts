@@ -3,6 +3,11 @@ import type * as vscode from "vscode";
 import type { BrowserDebuggerSession } from "../transport/browser-connect";
 import { onDidChangeConnectionState } from "../transport/connection-state";
 import type { Localize } from "../config/endpoint-config";
+import {
+  createBreakpointRegistry,
+  type BreakpointRegistry,
+  type DesiredBreakpoint,
+} from "./breakpoint-registry";
 
 export type DebugSessionTerminationReason = "connection-lost";
 
@@ -10,6 +15,8 @@ export interface DebugSessionManager {
   launch: () => Promise<void>;
   disconnect: () => Promise<void>;
   terminate: () => Promise<void>;
+  getBreakpointRegistry: () => BreakpointRegistry | undefined;
+  recordSetBreakpoints: (url: string, desired: DesiredBreakpoint[]) => void;
   onDidTerminate: (
     listener: (reason: DebugSessionTerminationReason) => void,
   ) => vscode.Disposable;
@@ -83,8 +90,10 @@ export function createDebugSessionManager({
 
   let pausedDisposable: vscode.Disposable | undefined;
   let runningSession: BrowserDebuggerSession | undefined;
+  let breakpointRegistry: BreakpointRegistry | undefined;
   let running = false;
   let emittedConnectionLost = false;
+  const cachedBreakpointsByUrl = new Map<string, DesiredBreakpoint[]>();
 
   const clearPausedSubscription = (): void => {
     pausedDisposable?.dispose();
@@ -93,12 +102,18 @@ export function createDebugSessionManager({
 
   const stopRunningSession = async (): Promise<void> => {
     const sessionToStop = runningSession;
+    const registryToClear = breakpointRegistry;
     running = false;
     runningSession = undefined;
+    breakpointRegistry = undefined;
     clearPausedSubscription();
 
     if (!sessionToStop) {
       return;
+    }
+
+    if (registryToClear) {
+      await registryToClear.clearAll();
     }
 
     try {
@@ -180,6 +195,18 @@ export function createDebugSessionManager({
         // Pause handling is implemented in Story 10.2.
       });
 
+      const nextRegistry = createBreakpointRegistry({
+        debuggerSession: session,
+        logger,
+        localize,
+      });
+
+      for (const [url, desired] of cachedBreakpointsByUrl.entries()) {
+        await nextRegistry.replace(url, desired);
+      }
+
+      breakpointRegistry = nextRegistry;
+
       runningSession = session;
       running = true;
     },
@@ -189,6 +216,10 @@ export function createDebugSessionManager({
     terminate: async () => {
       await stopRunningSession();
     },
+    getBreakpointRegistry: () => breakpointRegistry,
+    recordSetBreakpoints: (url, desired) => {
+      cachedBreakpointsByUrl.set(url, [...desired]);
+    },
     onDidTerminate: (listener) => terminateEmitter.event(listener),
     dispose: () => {
       disconnectFromStateChanges.dispose();
@@ -196,6 +227,7 @@ export function createDebugSessionManager({
       terminateEmitter.dispose();
       running = false;
       runningSession = undefined;
+      breakpointRegistry = undefined;
       emittedConnectionLost = false;
     },
   };

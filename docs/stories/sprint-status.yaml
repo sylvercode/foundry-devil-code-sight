@@ -118,7 +118,7 @@ development_status:
   # ── Epic 10: Full VS Code Debugging Experience (Post-MVP Core) ───────────
   epic-10: backlog
   10-1-register-and-bootstrap-notebook-cell-dap-session: done
-  10-2-verify-and-bind-notebook-cell-breakpoints-in-vs-code-ui: ready-for-dev
+  10-2-verify-and-bind-notebook-cell-breakpoints-in-vs-code-ui: review
   10-3-surface-stack-frames-scopes-and-variables-in-vs-code: ready-for-dev
   10-4-implement-stepping-controls-and-pause-lifecycle-synchronization: ready-for-dev
   10-5-validate-dual-client-coexistence-and-reliability: ready-for-dev

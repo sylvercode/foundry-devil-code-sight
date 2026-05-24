@@ -5,6 +5,7 @@ import type { DebugProtocol } from "@vscode/debugprotocol";
 
 import { NotebookDebugAdapter } from "../../../src/debugger/notebook-dap-adapter.js";
 import type { DebugSessionManager } from "../../../src/debugger/debug-session-manager.js";
+import type { DesiredBreakpoint } from "../../../src/debugger/breakpoint-registry.js";
 
 interface Harness {
   adapter: NotebookDebugAdapter;
@@ -75,6 +76,9 @@ function createSessionManager(
     launch: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
+    getBreakpointRegistry: () => undefined,
+    recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
+      undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
     ...overrides,
@@ -98,6 +102,9 @@ test("initialize returns expected capability snapshot", async () => {
     supportsTerminateRequest: true,
     supportTerminateDebuggee: false,
     supportsEvaluateForHovers: true,
+    supportsConditionalBreakpoints: true,
+    supportsHitConditionalBreakpoints: false,
+    supportsLogPoints: false,
   });
 
   harness.adapter.dispose();
