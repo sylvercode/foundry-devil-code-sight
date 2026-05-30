@@ -87,6 +87,7 @@ test("evaluate success path uses evaluateOnCallFrame", async () => {
 
   const manager: DebugSessionManager = {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => ({
@@ -116,6 +117,7 @@ test("evaluate success path uses evaluateOnCallFrame", async () => {
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };
@@ -145,6 +147,7 @@ test("evaluate success path uses evaluateOnCallFrame", async () => {
 test("evaluate returns localized error when exceptionDetails exist", async () => {
   const manager: DebugSessionManager = {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => ({
@@ -187,6 +190,7 @@ test("evaluate returns localized error when exceptionDetails exist", async () =>
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };

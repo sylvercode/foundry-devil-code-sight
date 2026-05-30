@@ -86,6 +86,7 @@ test("variables resolves properties and allocates child handles", async () => {
 
   const manager: DebugSessionManager = {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => ({
@@ -126,6 +127,7 @@ test("variables resolves properties and allocates child handles", async () => {
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };
@@ -165,6 +167,7 @@ test("variables truncates oversized page requests with marker", async () => {
 
   const manager: DebugSessionManager = {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => ({
@@ -187,6 +190,7 @@ test("variables truncates oversized page requests with marker", async () => {
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };

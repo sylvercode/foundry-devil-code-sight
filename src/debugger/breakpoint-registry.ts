@@ -28,6 +28,7 @@ export interface BreakpointRegistry {
     url: string,
     desired: DesiredBreakpoint[],
   ) => Promise<BoundBreakpoint[]>;
+  getUrlForBreakpointId: (breakpointId: string) => string | undefined;
   resolveRuntimeBreakpoint: (
     breakpointId: string,
     location: BreakpointLocations[number],
@@ -261,6 +262,17 @@ export function createBreakpointRegistry({
       return desiredByIndex.map(
         ({ key }) => createdByKey.get(key) as BoundBreakpoint,
       );
+    },
+    getUrlForBreakpointId: (breakpointId) => {
+      for (const [url, boundForUrl] of breakpointsByUrl.entries()) {
+        for (const bound of boundForUrl.values()) {
+          if (bound.breakpointId === breakpointId) {
+            return url;
+          }
+        }
+      }
+
+      return undefined;
     },
     resolveRuntimeBreakpoint: (breakpointId, location) => {
       for (const [url, boundForUrl] of breakpointsByUrl.entries()) {

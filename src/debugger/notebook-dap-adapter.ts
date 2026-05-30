@@ -2,8 +2,10 @@ import type * as vscode from "vscode";
 import type Protocol from "devtools-protocol/types/protocol";
 import {
   BreakpointEvent,
+  ContinuedEvent,
   DebugSession,
   InitializedEvent,
+  StoppedEvent,
   TerminatedEvent,
   Thread,
 } from "@vscode/debugadapter";
@@ -106,6 +108,7 @@ export class NotebookDebugAdapter
   private readonly localize: Localize;
   private readonly logger: (message: string, error?: unknown) => void;
   private readonly terminationSubscription: vscode.Disposable;
+  private readonly pausedSubscription: vscode.Disposable;
   private readonly breakpointResolvedSubscription: vscode.Disposable;
   private readonly stackFramesById = new Map<number, StackFrameEntry>();
   private cachedStackFrames: StackFrameEntry[] = [];
@@ -128,6 +131,9 @@ export class NotebookDebugAdapter
         this.emitTermination(reason);
       },
     );
+    this.pausedSubscription = this.sessionManager.onDidPaused((event) => {
+      this.emitStopped(event);
+    });
     this.breakpointResolvedSubscription =
       this.sessionManager.onDidBreakpointResolved((event) => {
         this.emitBreakpointResolved(event);
@@ -222,10 +228,7 @@ export class NotebookDebugAdapter
       .slice(startFrame, startFrame + levels)
       .map((entry) => {
         const callFrame = entry.callFrame;
-        const sourceIdentifier =
-          callFrame.url.length > 0
-            ? callFrame.url
-            : this.localize("<anonymous>");
+        const sourceIdentifier = this.resolveStackFrameSource(callFrame);
 
         return {
           id: entry.frameId,
@@ -570,6 +573,19 @@ export class NotebookDebugAdapter
     this.sendResponse(response);
   }
 
+  protected override async continueRequest(
+    response: DebugProtocol.ContinueResponse,
+    _args: DebugProtocol.ContinueArguments,
+  ): Promise<void> {
+    await this.sessionManager.resume();
+    response.success = true;
+    response.body = {
+      allThreadsContinued: true,
+    };
+    this.sendResponse(response);
+    this.sendEvent(new ContinuedEvent(1, true));
+  }
+
   protected override async terminateRequest(
     response: DebugProtocol.TerminateResponse,
     _args: DebugProtocol.TerminateArguments,
@@ -587,6 +603,7 @@ export class NotebookDebugAdapter
 
     this.disposed = true;
     this.terminationSubscription.dispose();
+    this.pausedSubscription.dispose();
     this.breakpointResolvedSubscription.dispose();
     this.sessionManager.dispose();
     super.dispose();
@@ -623,6 +640,39 @@ export class NotebookDebugAdapter
         source,
       }),
     );
+  }
+
+  private emitStopped(event: Protocol.Debugger.PausedEvent): void {
+    const reason = resolveStoppedReason(event);
+    const exceptionText =
+      event.reason === "exception" ? toExceptionText(event) : undefined;
+
+    this.logger(
+      `[debug] debugger paused reason='${event.reason}' mappedReason='${reason}' hitBreakpoints=${event.hitBreakpoints?.length ?? 0}.`,
+    );
+
+    this.sendEvent(new StoppedEvent(reason, 1, exceptionText));
+  }
+
+  private resolveStackFrameSource(
+    callFrame: Protocol.Debugger.CallFrame,
+  ): string {
+    if (callFrame.url.length > 0) {
+      return callFrame.url;
+    }
+
+    const pausedEvent = this.sessionManager.getPausedEvent();
+    const hitBreakpointId = pausedEvent?.hitBreakpoints?.[0];
+    if (hitBreakpointId) {
+      const urlFromBreakpoint = this.sessionManager
+        .getBreakpointRegistry()
+        ?.getUrlForBreakpointId(hitBreakpointId);
+      if (urlFromBreakpoint && urlFromBreakpoint.length > 0) {
+        return urlFromBreakpoint;
+      }
+    }
+
+    return this.localize("<anonymous>");
   }
 
   private async ensurePausedFrames(): Promise<StackFrameEntry[] | undefined> {
@@ -742,4 +792,36 @@ function describeException(
   }
 
   return "Unknown error";
+}
+
+function resolveStoppedReason(event: Protocol.Debugger.PausedEvent): string {
+  if ((event.hitBreakpoints?.length ?? 0) > 0) {
+    return "breakpoint";
+  }
+
+  if (event.reason === "exception") {
+    return "exception";
+  }
+
+  if (event.reason === "step") {
+    return "step";
+  }
+
+  return "pause";
+}
+
+function toExceptionText(
+  event: Protocol.Debugger.PausedEvent,
+): string | undefined {
+  const description = event.data?.description;
+  if (typeof description === "string" && description.length > 0) {
+    return description;
+  }
+
+  const value = event.data?.value;
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  return undefined;
 }

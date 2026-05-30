@@ -22,6 +22,7 @@ export interface DebugBreakpointResolvedEvent {
 
 export interface DebugSessionManager {
   launch: () => Promise<void>;
+  resume: () => Promise<void>;
   disconnect: () => Promise<void>;
   terminate: () => Promise<void>;
   getDebuggerSession: () => BrowserDebuggerSession | undefined;
@@ -33,6 +34,7 @@ export interface DebugSessionManager {
   onDidTerminate: (
     listener: (reason: DebugSessionTerminationReason) => void,
   ) => vscode.Disposable;
+  onDidPaused: (listener: (event: DebuggerPausedEvent) => void) => vscode.Disposable;
   onDidBreakpointResolved: (
     listener: (event: DebugBreakpointResolvedEvent) => void,
   ) => vscode.Disposable;
@@ -105,6 +107,7 @@ export function createDebugSessionManager({
   localize = defaultLocalize,
 }: DebugSessionManagerOptions): DebugSessionManager {
   const terminateEmitter = new SimpleEmitter<DebugSessionTerminationReason>();
+  const pausedEmitter = new SimpleEmitter<DebuggerPausedEvent>();
   const breakpointResolvedEmitter =
     new SimpleEmitter<DebugBreakpointResolvedEvent>();
 
@@ -232,6 +235,7 @@ export function createDebugSessionManager({
       pausedDisposable = session.onPaused((event) => {
         pausedEvent = event;
         pauseVersion += 1;
+        pausedEmitter.fire(event);
       });
 
       const nextVariableStore = createVariableStore({
@@ -273,6 +277,17 @@ export function createDebugSessionManager({
       runningSession = session;
       running = true;
     },
+    resume: async () => {
+      const session = runningSession;
+      if (!session) {
+        return;
+      }
+
+      await session.resume();
+
+      pausedEvent = undefined;
+      pauseVersion += 1;
+    },
     disconnect: async () => {
       await stopRunningSession();
     },
@@ -288,6 +303,7 @@ export function createDebugSessionManager({
       cachedBreakpointsByUrl.set(url, [...desired]);
     },
     onDidTerminate: (listener) => terminateEmitter.event(listener),
+    onDidPaused: (listener) => pausedEmitter.event(listener),
     onDidBreakpointResolved: (listener) =>
       breakpointResolvedEmitter.event(listener),
     dispose: () => {
@@ -295,6 +311,7 @@ export function createDebugSessionManager({
       clearPausedSubscription();
       clearBreakpointResolvedSubscription();
       terminateEmitter.dispose();
+      pausedEmitter.dispose();
       breakpointResolvedEmitter.dispose();
       running = false;
       runningSession = undefined;

@@ -91,6 +91,7 @@ function createSessionManager(
 
   return {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => undefined,
@@ -102,6 +103,7 @@ function createSessionManager(
       state.recorded.push({ url, desired });
     },
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };
@@ -115,6 +117,7 @@ function createRegistry(
 ): BreakpointRegistry {
   return {
     replace: onReplace,
+    getUrlForBreakpointId: () => undefined,
     resolveRuntimeBreakpoint: () => undefined,
     clear: async () => undefined,
     clearAll: async () => undefined,

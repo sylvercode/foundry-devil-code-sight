@@ -100,6 +100,7 @@ test("scopes maps scopeChain entries and appends global scope", async () => {
 
   const manager: DebugSessionManager = {
     launch: async () => undefined,
+    resume: async () => undefined,
     disconnect: async () => undefined,
     terminate: async () => undefined,
     getDebuggerSession: () => ({
@@ -128,6 +129,7 @@ test("scopes maps scopeChain entries and appends global scope", async () => {
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidPaused: () => ({ dispose: () => undefined }),
     onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };
