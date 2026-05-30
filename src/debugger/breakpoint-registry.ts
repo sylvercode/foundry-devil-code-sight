@@ -1,10 +1,6 @@
 import type { Localize } from "../config/endpoint-config";
 import type { BrowserDebuggerSession } from "../transport/browser-connect";
 
-interface RemoveBreakpointParams {
-  breakpointId: string;
-}
-
 type BreakpointLocations = Awaited<
   ReturnType<BrowserDebuggerSession["setBreakpointByUrl"]>
 >["locations"];
@@ -108,7 +104,7 @@ function resolveBoundColumn(
 ): number | undefined {
   const firstLocation = locations[0];
   if (firstLocation && typeof firstLocation.columnNumber === "number") {
-    return firstLocation.columnNumber;
+    return firstLocation.columnNumber + 1;
   }
 
   return fallbackColumn;
@@ -138,7 +134,7 @@ export function createBreakpointRegistry({
         try {
           await debuggerSession.removeBreakpoint({
             breakpointId: breakpoint.breakpointId,
-          } as RemoveBreakpointParams);
+          });
         } catch (error) {
           logger(
             `Failed to remove breakpoint ${breakpoint.breakpointId}`,
@@ -176,7 +172,7 @@ export function createBreakpointRegistry({
           try {
             await debuggerSession.removeBreakpoint({
               breakpointId: bound.breakpointId,
-            } as RemoveBreakpointParams);
+            });
           } catch (error) {
             logger(`Failed to remove breakpoint ${bound.breakpointId}`, error);
           } finally {
@@ -201,7 +197,10 @@ export function createBreakpointRegistry({
             const result = await debuggerSession.setBreakpointByUrl({
               url,
               lineNumber: candidate.line - 1,
-              columnNumber: candidate.column,
+              columnNumber:
+                candidate.column !== undefined
+                  ? candidate.column - 1
+                  : undefined,
               condition: toCdpCondition(candidate.condition),
             });
 
@@ -217,7 +216,7 @@ export function createBreakpointRegistry({
                 verified: false,
                 message: localize(
                   "Breakpoint could not be bound: {0}",
-                  "No runtime locations resolved.",
+                  localize("No runtime locations resolved."),
                 ),
               };
               next.set(key, unverified);
@@ -259,25 +258,9 @@ export function createBreakpointRegistry({
         breakpointsByUrl.delete(url);
       }
 
-      return desiredByIndex.map(({ key, desired: candidate }) => {
-        const bound = createdByKey.get(key);
-        if (bound) {
-          return bound;
-        }
-
-        return {
-          breakpointId: key,
-          line: candidate.line,
-          column: candidate.column,
-          condition: candidate.condition,
-          locations: [],
-          verified: false,
-          message: localize(
-            "Breakpoint could not be bound: {0}",
-            "No runtime locations resolved.",
-          ),
-        };
-      });
+      return desiredByIndex.map(
+        ({ key }) => createdByKey.get(key) as BoundBreakpoint,
+      );
     },
     resolveRuntimeBreakpoint: (breakpointId, location) => {
       for (const [url, boundForUrl] of breakpointsByUrl.entries()) {
@@ -292,7 +275,7 @@ export function createBreakpointRegistry({
               : bound.line;
           const nextColumn =
             typeof location.columnNumber === "number"
-              ? location.columnNumber
+              ? location.columnNumber + 1
               : bound.column;
 
           bound.line = nextLine;

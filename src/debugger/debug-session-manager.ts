@@ -219,11 +219,6 @@ export function createDebugSessionManager({
         logger,
         localize,
       });
-
-      for (const [url, desired] of cachedBreakpointsByUrl.entries()) {
-        await nextRegistry.replace(url, desired);
-      }
-
       breakpointRegistry = nextRegistry;
 
       clearBreakpointResolvedSubscription();
@@ -244,6 +239,10 @@ export function createDebugSessionManager({
 
         breakpointResolvedEmitter.fire(resolved);
       });
+
+      for (const [url, desired] of cachedBreakpointsByUrl.entries()) {
+        await nextRegistry.replace(url, desired);
+      }
 
       runningSession = session;
       running = true;

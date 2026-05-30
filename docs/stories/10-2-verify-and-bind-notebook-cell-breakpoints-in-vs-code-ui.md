@@ -2,7 +2,7 @@
 storyId: "10.2"
 storyKey: "10-2-verify-and-bind-notebook-cell-breakpoints-in-vs-code-ui"
 title: "Verify and Bind Notebook-Cell Breakpoints in VS Code UI"
-status: "review"
+status: "done"
 created: "2026-05-11"
 epic: "10"
 priority: "p0-blocker"
@@ -11,7 +11,7 @@ dependencies: ["10-1-register-and-bootstrap-notebook-cell-dap-session"]
 
 # Story 10.2: Verify and Bind Notebook-Cell Breakpoints in VS Code UI
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -81,14 +81,16 @@ So that breakpoint state in VS Code matches actual runtime behavior.
 - [x] Create `src/debugger/breakpoint-registry.ts` exporting `createBreakpointRegistry({ debuggerSession, logger })` and the `BreakpointRegistry` interface.
 - [x] Internal state: `Map<url, Map<key, BoundBreakpoint>>` where `key = "<line>:<column ?? 0>:<condition ?? \"\">"` and `BoundBreakpoint = { breakpointId, line, column, condition, locations, verified, message? }`. The `locations` field reuses the `Pick<Protocol.Debugger.SetBreakpointByUrlResponse, "locations">["locations"]` shape already returned by `BrowserDebuggerSession.setBreakpointByUrl` (see [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts)) — do not re-declare it.
 - [x] API:
-  - `replace(url, desired: DesiredBreakpoint[]): Promise<BoundBreakpoint[]>` — computes diff, issues `setBreakpointByUrl` and `removeBreakpoint` calls in parallel, returns the resulting bound state in input order. Lines are converted from DAP 1-based (input) to CDP 0-based (call) here, and from CDP 0-based (response) back to DAP 1-based (output) here. This is the only place in the codebase that performs the conversion.
+  - `replace(url, desired: DesiredBreakpoint[]): Promise<BoundBreakpoint[]>` — computes diff, issues `setBreakpointByUrl` and `removeBreakpoint` calls in parallel, returns the resulting bound state in input order. Lines AND columns are converted from DAP 1-based (input) to CDP 0-based (call) here, and from CDP 0-based (response) back to DAP 1-based (output) here. This is the only place in the codebase that performs the conversion.
+  - `resolveRuntimeBreakpoint(breakpointId, location): { url, breakpointId, line, column? } | undefined` — looks up a registry entry by `breakpointId`, updates its bound `line`/`column`/`locations`/`verified` from the runtime `Debugger.breakpointResolved` event, and returns the resolved coordinates so the manager can emit a feedback event. Required so VS Code's gutter flips from unverified → verified once V8 actually resolves the URL after script load (see manual-test-plan TC-1).
   - `clear(url): Promise<void>` and `clearAll(): Promise<void>` for session teardown. Both MUST be best-effort: every `removeBreakpoint` rejection is caught and logged via `logger`; the returned promise resolves even if every call fails (required for the `connection-lost` teardown path — see Task 7).
 - [x] No duplicate runtime breakpoints for the same `key` (AC 6) — the diff guarantees idempotence across rerun-driven refreshes.
 - [x] Failure handling: a single failing add becomes a `BoundBreakpoint` with `verified: false` and a localized message built from `"Breakpoint could not be bound: {0}"`; the batch resolves.
 
-### 3. Reuse `BrowserDebuggerSession` As-Is (AC: 2, 3)
+### 3. Reuse `BrowserDebuggerSession` With One Additive Hook (AC: 2, 3)
 
-- [x] No new transport file and no transport-shape changes. `BrowserDebuggerSession` (introduced by Story 2.5, retained by Story 10.1) already exposes `enable`, `disable`, `setBreakpointByUrl` (returning `{ breakpointId, locations }`), `removeBreakpoint`, `resume`, and `onPaused` — verified in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts). The `condition` param is already on the accepted `Pick<…>` for `setBreakpointByUrl`, so AC 5 forwarding is a pass-through.
+- [x] No new transport file. `BrowserDebuggerSession` (introduced by Story 2.5, retained by Story 10.1) already exposes `enable`, `disable`, `setBreakpointByUrl` (returning `{ breakpointId, locations }`), `removeBreakpoint`, `resume`, and `onPaused` — verified in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts). The `condition` param is already on the accepted `Pick<…>` for `setBreakpointByUrl`, so AC 5 forwarding is a pass-through.
+- [x] Extend `BrowserDebuggerSession` with a single additive method `onBreakpointResolved(listener)` that subscribes to V8's `Debugger.breakpointResolved` event via the session-scoped event name (`Debugger.breakpointResolved.<sessionId>`). This is the minimum transport surface needed for the registry's `resolveRuntimeBreakpoint` feedback path; no other transport-shape changes.
 - [x] No bypass of `BrowserDebuggerSession`. Do not import `chrome-remote-interface` from `src/debugger/**`.
 
 ### 4. Source Identity (AC: 1, 6)
@@ -117,6 +119,7 @@ So that breakpoint state in VS Code matches actual runtime behavior.
 - [x] Extend `DebugSessionManager` (Story 10.1) so the adapter can reach the registry:
   - Create the `BreakpointRegistry` inside `launch()` after `session.enable()` resolves, bound to the active `BrowserDebuggerSession`. Tear it down inside `stopRunningSession()` (Task 7).
   - Expose `getBreakpointRegistry(): BreakpointRegistry | undefined` returning the live registry, or `undefined` before `launch()` and after teardown.
+  - Subscribe to `session.onBreakpointResolved` and expose `onDidBreakpointResolved(listener)` so the adapter can emit a DAP `BreakpointEvent("changed", …)` when V8 resolves a previously unverified breakpoint. The subscription MUST be attached BEFORE the cached-payload replay loop so resolution events fired during replay are not lost.
   - Cache the most recent `setBreakpoints` payload **per URL** that the adapter has seen. After a successful `launch()` resolves (and before `InitializedEvent` is sent), replay each cached payload through `registry.replace(url, desired)` so that breakpoints toggled while no session was active become bound. Add a manager method `recordSetBreakpoints(url, desired)` the adapter calls from Task 1.
 
 ### 6. Implement `breakpointLocations` Request (AC: 4)
@@ -165,6 +168,22 @@ So that breakpoint state in VS Code matches actual runtime behavior.
 - [x] `npm run test`.
 - [x] `npm run compile`.
 - [x] `npm run test:integration:cdp`.
+
+### Review Findings
+
+Code review run on 2026-05-30 against `main..verify-and-bind-notebook-cell-breakpoints`.
+
+- [x] [Review][Patch] Fix `breakpointResolved` race + amend story scope — Implementation adds `Debugger.breakpointResolved` plumbing (transport `onBreakpointResolved`, registry `resolveRuntimeBreakpoint`, manager `onDidBreakpointResolved`, adapter `BreakpointEvent("changed", …)`) to flip the gutter from unverified to verified once V8 binds the URL — the actual fix for the TC-1 manual-test symptom ("breakpoint stays unbound until first run"). Two follow-ups: (a) **Fix the race** in [src/debugger/debug-session-manager.ts](src/debugger/debug-session-manager.ts#L218-L243) — currently the `onBreakpointResolved` subscription is attached AFTER the cached-payload replay loop, so any `breakpointResolved` events V8 fires during replay are dropped (re-introducing the TC-1 symptom after reconnect). Move the subscription and the `breakpointRegistry = nextRegistry` assignment BEFORE the replay loop. (b) **Amend Task 2 and Task 3** to formally cover the runtime-resolution feedback path (new transport method, new registry method, new manager event).
+- [x] [Review][Patch] Dead unverified-fallback branch in registry [src/debugger/breakpoint-registry.ts:251-265] — Every `desiredByIndex` key is processed by the `desiredByKey` parallel loop, so `createdByKey.get(key)` always returns a value; the unverified fallback object at lines 254-265 is unreachable.
+- [x] [Review][Patch] Hardcoded English string passed into localized template [src/debugger/breakpoint-registry.ts:225-227] — `"No runtime locations resolved."` is the `{0}` argument to `localize("Breakpoint could not be bound: {0}", …)`. The outer template is localized; the inner string is not, so translations are inconsistent.
+- [x] [Review][Patch] Column number conversion not symmetric with line [src/debugger/breakpoint-registry.ts:108-117, 234-236] — Lines are converted DAP↔CDP (`±1`), but columns are passed through unchanged in both directions. DAP columns are 1-based by convention and CDP columns are 0-based, so column-precise breakpoints are off-by-one. Currently latent because the response does not populate `column`.
+- [x] [Review][Patch] Debug-only log strings pollute the l10n bundle [src/debugger/notebook-dap-adapter.ts:~180-225] — `this.localize("true")`, `this.localize("false")`, `this.localize("(none)")`, `this.localize("(missing source)")` are wrapped in `localize()` even though they appear only in debug log lines. They add noise to translation work and mix localized/non-localized debug output. Replace with plain literals (or remove the verbose per-breakpoint debug log).
+- [x] [Review][Patch] Redundant local `RemoveBreakpointParams` interface and `as` casts [src/debugger/breakpoint-registry.ts:3-5, 139, 177] — The transport's `removeBreakpoint` already accepts the proper CDP `DebuggerRemoveBreakpointParams` type. The local one-field interface plus the two `as RemoveBreakpointParams` casts are unnecessary; pass `{ breakpointId }` directly.
+- [x] [Review][Defer] No defensive validation for missing `result.locations` from CDP [src/debugger/breakpoint-registry.ts:208] — deferred, low risk (CDP typing guarantees the field).
+- [x] [Review][Defer] No validation for invalid DAP line/column inputs (≤0, negative) [src/debugger/breakpoint-registry.ts, src/debugger/notebook-dap-adapter.ts] — deferred, defensive; VS Code does not produce these.
+- [x] [Review][Defer] Theoretical race: `recordSetBreakpoints` mutates `cachedBreakpointsByUrl` during `launch()` replay loop [src/debugger/debug-session-manager.ts:218-225] — deferred, narrow async window.
+- [x] [Review][Defer] `removeBreakpoint` rejection still deletes registry entry via `finally`, potentially leaking runtime breakpoint [src/debugger/breakpoint-registry.ts:163-174] — deferred, intentional "best-effort" per Task 2 spec.
+- [x] [Review][Defer] Integration polling fixed at 25 ms × 120 (≈3 s) may flake on slow CI [tests/integration/debugger/breakpoint-binding.integration.test.ts:113-129] — deferred, subjective.
 
 ## Dev Notes
 

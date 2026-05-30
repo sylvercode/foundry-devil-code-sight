@@ -149,8 +149,8 @@ test("terminate clears registry before disabling debugger", async () => {
   assert.deepEqual(state.sequence, [
     "enable",
     "onPaused",
-    "setBreakpointByUrl",
     "onBreakpointResolved",
+    "setBreakpointByUrl",
     "disposePaused",
     "disposeBreakpointResolved",
     "removeBreakpoint",

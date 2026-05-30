@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 10-2-verify-and-bind-notebook-cell-breakpoints-in-vs-code-ui (2026-05-30)
+
+- No defensive validation for a missing `result.locations` field from `Debugger.setBreakpointByUrl` — currently relies on the CDP TypeScript types declaring the field as present; low risk.
+- No validation for invalid DAP line/column inputs (line ≤ 0, negative column) before forwarding to CDP — defensive only; VS Code does not produce such inputs.
+- Theoretical race: `recordSetBreakpoints` may mutate `cachedBreakpointsByUrl` during the `launch()` cached-payload replay loop — narrow async window, no observed failure.
+- `removeBreakpoint` rejection still deletes the local registry entry via `finally`, potentially leaving a stale runtime breakpoint on the V8 side — intentional "best-effort" per Task 2 spec.
+- Integration test `breakpoint-binding.integration.test.ts` polls at 25 ms × 120 (~3 s) — may flake on slow CI; consider an adaptive wait or longer cap.
+
 ## Deferred from: code review of 10-1-register-and-bootstrap-notebook-cell-dap-session (2026-05-23)
 
 - Two concurrent `vscode.DebugSession` instances against the same `ActiveBrowserConnection` race on `Debugger.enable`/`Debugger.disable` and emit two `connection-lost` terminations. Explicitly out of scope for Story 10.1; Story 10.5 (dual-client coexistence) is expected to address this with reference counting or session arbitration.

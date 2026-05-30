@@ -170,18 +170,12 @@ export class NotebookDebugAdapter
     const requestedUrl = resolveSourceUrl(args.source);
     const desired = toDesiredBreakpoints(args.breakpoints);
     this.logger(
-      this.localize(
-        "[debug] setBreakpoints received for source '{0}' with {1} requested breakpoint(s).",
-        requestedUrl ?? this.localize("(missing source)"),
-        String(desired.length),
-      ),
+      `[debug] setBreakpoints received for source '${requestedUrl ?? "(missing source)"}' with ${desired.length} requested breakpoint(s).`,
     );
 
     if (!requestedUrl) {
       this.logger(
-        this.localize(
-          "[debug] setBreakpoints ignored because no source URL was provided.",
-        ),
+        "[debug] setBreakpoints ignored because no source URL was provided.",
       );
       response.success = true;
       response.body = {
@@ -201,10 +195,7 @@ export class NotebookDebugAdapter
     const registry = this.sessionManager.getBreakpointRegistry();
     if (!registry) {
       this.logger(
-        this.localize(
-          "[debug] setBreakpoints deferred for source '{0}' because debug session is not active.",
-          requestedUrl,
-        ),
+        `[debug] setBreakpoints deferred for source '${requestedUrl}' because debug session is not active.`,
       );
       response.success = true;
       response.body = {
@@ -228,22 +219,11 @@ export class NotebookDebugAdapter
     ).length;
     const unverifiedCount = bound.length - verifiedCount;
     this.logger(
-      this.localize(
-        "[debug] setBreakpoints applied for source '{0}': verified={1}, unverified={2}.",
-        requestedUrl,
-        String(verifiedCount),
-        String(unverifiedCount),
-      ),
+      `[debug] setBreakpoints applied for source '${requestedUrl}': verified=${verifiedCount}, unverified=${unverifiedCount}.`,
     );
     for (const breakpoint of bound) {
       this.logger(
-        this.localize(
-          "[debug] breakpoint binding result source='{0}' line={1} verified={2} message='{3}'.",
-          requestedUrl,
-          String(breakpoint.line),
-          breakpoint.verified ? this.localize("true") : this.localize("false"),
-          breakpoint.message ?? this.localize("(none)"),
-        ),
+        `[debug] breakpoint binding result source='${requestedUrl}' line=${breakpoint.line} verified=${breakpoint.verified} message='${breakpoint.message ?? "(none)"}'.`,
       );
     }
 
@@ -342,12 +322,7 @@ export class NotebookDebugAdapter
     });
 
     this.logger(
-      this.localize(
-        "[debug] breakpoint resolved source='{0}' line={1} breakpointId='{2}'.",
-        event.url,
-        String(event.line),
-        event.breakpointId,
-      ),
+      `[debug] breakpoint resolved source='${event.url}' line=${event.line} breakpointId='${event.breakpointId}'.`,
     );
 
     this.sendEvent(
