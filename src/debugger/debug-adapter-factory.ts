@@ -61,6 +61,7 @@ export class DebugAdapterFactory
     const adapter = this.createAdapter({
       sessionManager: manager,
       localize: vscode.l10n.t,
+      logger: this.logger,
     });
 
     return new vscode.DebugAdapterInlineImplementation(adapter);

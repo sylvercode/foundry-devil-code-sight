@@ -53,6 +53,8 @@ type DebuggerSetBreakpointByUrlResult =
 type DebuggerRemoveBreakpointParams =
   ProtocolMappingApi.Commands["Debugger.removeBreakpoint"]["paramsType"][0];
 type DebuggerPausedEvent = ProtocolMappingApi.Events["Debugger.paused"][0];
+type DebuggerBreakpointResolvedEvent =
+  ProtocolMappingApi.Events["Debugger.breakpointResolved"][0];
 
 export interface BrowserDebuggerSession {
   enable: () => Promise<void>;
@@ -69,6 +71,9 @@ export interface BrowserDebuggerSession {
   resume: () => Promise<void>;
   onPaused: (
     listener: (event: DebuggerPausedEvent) => void,
+  ) => vscode.Disposable;
+  onBreakpointResolved: (
+    listener: (event: DebuggerBreakpointResolvedEvent) => void,
   ) => vscode.Disposable;
 }
 
@@ -149,6 +154,21 @@ export function createBrowserDebuggerSession(
     },
     onPaused: (listener) => {
       const eventName = toSessionScopedEventName("Debugger.paused", sessionId);
+      const handler = listener as (event: unknown) => void;
+
+      client.on(eventName, handler);
+
+      return {
+        dispose: () => {
+          removeClientListener(client, eventName, handler);
+        },
+      };
+    },
+    onBreakpointResolved: (listener) => {
+      const eventName = toSessionScopedEventName(
+        "Debugger.breakpointResolved",
+        sessionId,
+      );
       const handler = listener as (event: unknown) => void;
 
       client.on(eventName, handler);

@@ -30,5 +30,9 @@
   "Browser Kernel Debug": "Browser Kernel Debug",
   "Cannot start debug session: connect to a browser target first.": "Cannot start debug session: connect to a browser target first.",
   "Browser connection lost; debug session terminated.": "Browser connection lost; debug session terminated.",
-  "Notebook cells": "Notebook cells"
+  "Notebook cells": "Notebook cells",
+  "Breakpoint could not be bound: {0}": "Breakpoint could not be bound: {0}",
+  "No runtime locations resolved.": "No runtime locations resolved.",
+  "Logpoints and hit-count breakpoints are not yet supported by the Browser Kernel debugger; binding as unconditional.": "Logpoints and hit-count breakpoints are not yet supported by the Browser Kernel debugger; binding as unconditional.",
+  "Debug session not active; breakpoint will be retried.": "Debug session not active; breakpoint will be retried."
 }
