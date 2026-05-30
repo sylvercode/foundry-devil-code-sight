@@ -9,6 +9,10 @@ import type { BrowserDebuggerSession } from "../../../src/transport/browser-conn
 interface FakeSessionState {
   sequence: string[];
   pauseListener?: (event: unknown) => void;
+  breakpointResolvedListener?: (event: {
+    breakpointId: string;
+    location: { lineNumber: number; columnNumber?: number; scriptId: string };
+  }) => void;
   failEnable: boolean;
   setBreakpointCalls: Array<{
     url?: string;
@@ -77,6 +81,23 @@ function createFakeDebuggerSession(
         },
       };
     },
+    onBreakpointResolved: (listener) => {
+      state.sequence.push("onBreakpointResolved");
+      state.breakpointResolvedListener = listener as (event: {
+        breakpointId: string;
+        location: {
+          lineNumber: number;
+          columnNumber?: number;
+          scriptId: string;
+        };
+      }) => void;
+      return {
+        dispose: () => {
+          state.sequence.push("disposeBreakpointResolved");
+          state.breakpointResolvedListener = undefined;
+        },
+      };
+    },
   };
 }
 
@@ -92,7 +113,11 @@ test("launch enables debugger and subscribes paused listener", async () => {
 
   await manager.launch();
 
-  assert.deepEqual(state.sequence, ["enable", "onPaused"]);
+  assert.deepEqual(state.sequence, [
+    "enable",
+    "onPaused",
+    "onBreakpointResolved",
+  ]);
 
   manager.dispose();
 });
@@ -125,7 +150,9 @@ test("terminate clears registry before disabling debugger", async () => {
     "enable",
     "onPaused",
     "setBreakpointByUrl",
+    "onBreakpointResolved",
     "disposePaused",
+    "disposeBreakpointResolved",
     "removeBreakpoint",
     "disable",
   ]);
@@ -305,5 +332,38 @@ test("terminate survives removeBreakpoint failures and still disables", async ()
   assert.equal(state.sequence.includes("disable"), true);
   assert.equal(manager.getBreakpointRegistry(), undefined);
 
+  manager.dispose();
+});
+
+test("runtime breakpointResolved is propagated through manager event", async () => {
+  createConnectionStateStore();
+
+  const state = createState();
+  const manager = createDebugSessionManager({
+    getDebuggerSession: () => createFakeDebuggerSession(state),
+    logger: () => undefined,
+  });
+
+  manager.recordSetBreakpoints("vscode-notebook-cell://test/cell-r.js", [
+    { line: 7 },
+  ]);
+
+  const resolvedEvents: Array<{ url: string; line: number }> = [];
+  const subscription = manager.onDidBreakpointResolved((event) => {
+    resolvedEvents.push({ url: event.url, line: event.line });
+  });
+
+  await manager.launch();
+
+  state.breakpointResolvedListener?.({
+    breakpointId: "bp-1",
+    location: { scriptId: "1", lineNumber: 8, columnNumber: 0 },
+  });
+
+  assert.deepEqual(resolvedEvents, [
+    { url: "vscode-notebook-cell://test/cell-r.js", line: 9 },
+  ]);
+
+  subscription.dispose();
   manager.dispose();
 });

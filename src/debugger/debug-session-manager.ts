@@ -11,6 +11,13 @@ import {
 
 export type DebugSessionTerminationReason = "connection-lost";
 
+export interface DebugBreakpointResolvedEvent {
+  url: string;
+  breakpointId: string;
+  line: number;
+  column?: number;
+}
+
 export interface DebugSessionManager {
   launch: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -19,6 +26,9 @@ export interface DebugSessionManager {
   recordSetBreakpoints: (url: string, desired: DesiredBreakpoint[]) => void;
   onDidTerminate: (
     listener: (reason: DebugSessionTerminationReason) => void,
+  ) => vscode.Disposable;
+  onDidBreakpointResolved: (
+    listener: (event: DebugBreakpointResolvedEvent) => void,
   ) => vscode.Disposable;
   dispose: () => void;
 }
@@ -87,8 +97,11 @@ export function createDebugSessionManager({
   localize = defaultLocalize,
 }: DebugSessionManagerOptions): DebugSessionManager {
   const terminateEmitter = new SimpleEmitter<DebugSessionTerminationReason>();
+  const breakpointResolvedEmitter =
+    new SimpleEmitter<DebugBreakpointResolvedEvent>();
 
   let pausedDisposable: vscode.Disposable | undefined;
+  let breakpointResolvedDisposable: vscode.Disposable | undefined;
   let runningSession: BrowserDebuggerSession | undefined;
   let breakpointRegistry: BreakpointRegistry | undefined;
   let running = false;
@@ -100,6 +113,11 @@ export function createDebugSessionManager({
     pausedDisposable = undefined;
   };
 
+  const clearBreakpointResolvedSubscription = (): void => {
+    breakpointResolvedDisposable?.dispose();
+    breakpointResolvedDisposable = undefined;
+  };
+
   const stopRunningSession = async (): Promise<void> => {
     const sessionToStop = runningSession;
     const registryToClear = breakpointRegistry;
@@ -107,6 +125,7 @@ export function createDebugSessionManager({
     runningSession = undefined;
     breakpointRegistry = undefined;
     clearPausedSubscription();
+    clearBreakpointResolvedSubscription();
 
     if (!sessionToStop) {
       return;
@@ -207,6 +226,25 @@ export function createDebugSessionManager({
 
       breakpointRegistry = nextRegistry;
 
+      clearBreakpointResolvedSubscription();
+      breakpointResolvedDisposable = session.onBreakpointResolved((event) => {
+        const registry = breakpointRegistry;
+        if (!registry) {
+          return;
+        }
+
+        const resolved = registry.resolveRuntimeBreakpoint(
+          event.breakpointId,
+          event.location,
+        );
+
+        if (!resolved) {
+          return;
+        }
+
+        breakpointResolvedEmitter.fire(resolved);
+      });
+
       runningSession = session;
       running = true;
     },
@@ -221,10 +259,14 @@ export function createDebugSessionManager({
       cachedBreakpointsByUrl.set(url, [...desired]);
     },
     onDidTerminate: (listener) => terminateEmitter.event(listener),
+    onDidBreakpointResolved: (listener) =>
+      breakpointResolvedEmitter.event(listener),
     dispose: () => {
       disconnectFromStateChanges.dispose();
       clearPausedSubscription();
+      clearBreakpointResolvedSubscription();
       terminateEmitter.dispose();
+      breakpointResolvedEmitter.dispose();
       running = false;
       runningSession = undefined;
       breakpointRegistry = undefined;

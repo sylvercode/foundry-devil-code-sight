@@ -231,6 +231,44 @@ test("createBrowserDebuggerSession onPaused subscribes and disposes by session-s
   assert.equal(events.length, 1);
 });
 
+test("createBrowserDebuggerSession onBreakpointResolved subscribes and disposes by session-scoped event name", () => {
+  const calls: Array<{ action: "on" | "off"; eventName: string }> = [];
+  let capturedListener: ((event: unknown) => void) | undefined;
+
+  const session = createBrowserDebuggerSession(
+    {
+      send: async () => undefined,
+      on: (eventName: string, listener: (event: unknown) => void) => {
+        calls.push({ action: "on", eventName });
+        capturedListener = listener;
+      },
+      off: (eventName: string) => {
+        calls.push({ action: "off", eventName });
+      },
+    } as never,
+    "session-5",
+  );
+
+  const events: unknown[] = [];
+  const subscription = session.onBreakpointResolved((event) => {
+    events.push(event);
+  });
+
+  capturedListener?.({ breakpointId: "bp-1" });
+  subscription.dispose();
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], {
+    action: "on",
+    eventName: "Debugger.breakpointResolved.session-5",
+  });
+  assert.deepEqual(calls[1], {
+    action: "off",
+    eventName: "Debugger.breakpointResolved.session-5",
+  });
+  assert.equal(events.length, 1);
+});
+
 test("connectToBrowserTarget does not call Debugger.enable during attach", async () => {
   await disconnectActiveBrowserConnection();
 

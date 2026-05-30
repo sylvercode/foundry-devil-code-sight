@@ -13,6 +13,7 @@ import type {
 
 interface Harness {
   adapter: NotebookDebugAdapter;
+  sentMessages: DebugProtocol.ProtocolMessage[];
   sendRequest: (
     command: string,
     args?: unknown,
@@ -67,6 +68,7 @@ function createHarness(sessionManager: DebugSessionManager): Harness {
 
   return {
     adapter,
+    sentMessages,
     sendRequest,
   };
 }
@@ -88,6 +90,7 @@ function createSessionManager(
       state.recorded.push({ url, desired });
     },
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
   };
 }
@@ -100,6 +103,7 @@ function createRegistry(
 ): BreakpointRegistry {
   return {
     replace: onReplace,
+    resolveRuntimeBreakpoint: () => undefined,
     clear: async () => undefined,
     clearAll: async () => undefined,
   };
@@ -265,6 +269,53 @@ test("initialize capability snapshot includes breakpoint flags", async () => {
     supportsHitConditionalBreakpoints: false,
     supportsLogPoints: false,
   });
+
+  harness.adapter.dispose();
+});
+
+test("adapter emits breakpoint changed event when manager reports runtime resolution", () => {
+  const state: ManagerState = { recorded: [] };
+  let breakpointResolvedListener:
+    | ((event: {
+        url: string;
+        breakpointId: string;
+        line: number;
+        column?: number;
+      }) => void)
+    | undefined;
+
+  const manager = createSessionManager(state, undefined);
+  manager.onDidBreakpointResolved = (listener) => {
+    breakpointResolvedListener = listener;
+    return { dispose: () => undefined };
+  };
+
+  const harness = createHarness(manager);
+
+  breakpointResolvedListener?.({
+    url: "vscode-notebook-cell://test/cell-5.js",
+    breakpointId: "bp-12",
+    line: 10,
+    column: 1,
+  });
+
+  const changedEvents = harness.sentMessages.filter(
+    (message) =>
+      message.type === "event" &&
+      (message as DebugProtocol.Event).event === "breakpoint",
+  ) as DebugProtocol.Event[];
+
+  assert.equal(changedEvents.length, 1);
+  const body =
+    (changedEvents[0]?.body as DebugProtocol.BreakpointEvent["body"]) ??
+    undefined;
+  assert.equal(body?.reason, "changed");
+  assert.equal(body?.breakpoint?.verified, true);
+  assert.equal(body?.breakpoint?.line, 10);
+  assert.equal(
+    body?.breakpoint?.source?.path,
+    "vscode-notebook-cell://test/cell-5.js",
+  );
 
   harness.adapter.dispose();
 });

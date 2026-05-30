@@ -1,5 +1,6 @@
 import type * as vscode from "vscode";
 import {
+  BreakpointEvent,
   DebugSession,
   InitializedEvent,
   TerminatedEvent,
@@ -8,6 +9,7 @@ import {
 import type { DebugProtocol } from "@vscode/debugprotocol";
 
 import type {
+  DebugBreakpointResolvedEvent,
   DebugSessionManager,
   DebugSessionTerminationReason,
 } from "./debug-session-manager";
@@ -75,6 +77,7 @@ export class NotebookDebugAdapter
   private readonly localize: Localize;
   private readonly logger: (message: string, error?: unknown) => void;
   private readonly terminationSubscription: vscode.Disposable;
+  private readonly breakpointResolvedSubscription: vscode.Disposable;
   private disposed = false;
   private terminatedEmitted = false;
 
@@ -92,6 +95,10 @@ export class NotebookDebugAdapter
         this.emitTermination(reason);
       },
     );
+    this.breakpointResolvedSubscription =
+      this.sessionManager.onDidBreakpointResolved((event) => {
+        this.emitBreakpointResolved(event);
+      });
   }
 
   private sendTerminatedOnce(event: TerminatedEvent): void {
@@ -310,6 +317,7 @@ export class NotebookDebugAdapter
 
     this.disposed = true;
     this.terminationSubscription.dispose();
+    this.breakpointResolvedSubscription.dispose();
     this.sessionManager.dispose();
     super.dispose();
   }
@@ -325,5 +333,30 @@ export class NotebookDebugAdapter
         }),
       );
     }
+  }
+
+  private emitBreakpointResolved(event: DebugBreakpointResolvedEvent): void {
+    const source = createSource(event.url, {
+      path: event.url,
+      name: event.url,
+    });
+
+    this.logger(
+      this.localize(
+        "[debug] breakpoint resolved source='{0}' line={1} breakpointId='{2}'.",
+        event.url,
+        String(event.line),
+        event.breakpointId,
+      ),
+    );
+
+    this.sendEvent(
+      new BreakpointEvent("changed", {
+        verified: true,
+        line: event.line,
+        column: event.column,
+        source,
+      }),
+    );
   }
 }

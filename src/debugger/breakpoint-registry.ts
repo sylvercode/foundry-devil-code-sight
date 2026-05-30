@@ -32,6 +32,17 @@ export interface BreakpointRegistry {
     url: string,
     desired: DesiredBreakpoint[],
   ) => Promise<BoundBreakpoint[]>;
+  resolveRuntimeBreakpoint: (
+    breakpointId: string,
+    location: BreakpointLocations[number],
+  ) =>
+    | {
+        url: string;
+        breakpointId: string;
+        line: number;
+        column?: number;
+      }
+    | undefined;
   clear: (url: string) => Promise<void>;
   clearAll: () => Promise<void>;
 }
@@ -267,6 +278,39 @@ export function createBreakpointRegistry({
           ),
         };
       });
+    },
+    resolveRuntimeBreakpoint: (breakpointId, location) => {
+      for (const [url, boundForUrl] of breakpointsByUrl.entries()) {
+        for (const bound of boundForUrl.values()) {
+          if (bound.breakpointId !== breakpointId) {
+            continue;
+          }
+
+          const nextLine =
+            typeof location.lineNumber === "number"
+              ? location.lineNumber + 1
+              : bound.line;
+          const nextColumn =
+            typeof location.columnNumber === "number"
+              ? location.columnNumber
+              : bound.column;
+
+          bound.line = nextLine;
+          bound.column = nextColumn;
+          bound.locations = [location];
+          bound.verified = true;
+          bound.message = undefined;
+
+          return {
+            url,
+            breakpointId,
+            line: nextLine,
+            column: nextColumn,
+          };
+        }
+      }
+
+      return undefined;
     },
     clear: async (url) => {
       const boundForUrl = breakpointsByUrl.get(url);

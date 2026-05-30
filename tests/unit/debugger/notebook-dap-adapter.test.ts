@@ -80,6 +80,7 @@ function createSessionManager(
     recordSetBreakpoints: (_url: string, _desired: DesiredBreakpoint[]) =>
       undefined,
     onDidTerminate: () => ({ dispose: () => undefined }),
+    onDidBreakpointResolved: () => ({ dispose: () => undefined }),
     dispose: () => undefined,
     ...overrides,
   };

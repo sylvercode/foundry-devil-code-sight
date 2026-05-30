@@ -69,6 +69,7 @@ function createSession(state: SessionState): BrowserDebuggerSession {
     },
     resume: async () => undefined,
     onPaused: () => ({ dispose: () => undefined }),
+    onBreakpointResolved: () => ({ dispose: () => undefined }),
   };
 }
 
