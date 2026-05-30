@@ -124,6 +124,122 @@ test("createBrowserDebuggerSession forwards removeBreakpoint to the scoped sessi
   assert.equal(sendCalls[0]?.sessionId, "session-2");
 });
 
+test("createBrowserDebuggerSession forwards getProperties to the scoped session", async () => {
+  const sendCalls: Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }> = [];
+
+  const session = createBrowserDebuggerSession(
+    {
+      send: async (method: string, params: unknown, sessionId?: string) => {
+        sendCalls.push({ method, params, sessionId });
+        return {
+          result: [],
+        };
+      },
+      on: () => undefined,
+      off: () => undefined,
+    } as never,
+    "session-properties",
+  );
+
+  await session.getProperties({ objectId: "obj-1" });
+
+  assert.equal(sendCalls.length, 1);
+  assert.equal(sendCalls[0]?.method, "Runtime.getProperties");
+  assert.equal(sendCalls[0]?.sessionId, "session-properties");
+});
+
+test("createBrowserDebuggerSession forwards evaluateOnCallFrame to the scoped session", async () => {
+  const sendCalls: Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }> = [];
+
+  const session = createBrowserDebuggerSession(
+    {
+      send: async (method: string, params: unknown, sessionId?: string) => {
+        sendCalls.push({ method, params, sessionId });
+        return {
+          result: {
+            type: "number",
+            value: 1,
+          },
+        };
+      },
+      on: () => undefined,
+      off: () => undefined,
+    } as never,
+    "session-call-frame",
+  );
+
+  await session.evaluateOnCallFrame({ callFrameId: "cf-1", expression: "1" });
+
+  assert.equal(sendCalls.length, 1);
+  assert.equal(sendCalls[0]?.method, "Debugger.evaluateOnCallFrame");
+  assert.equal(sendCalls[0]?.sessionId, "session-call-frame");
+});
+
+test("createBrowserDebuggerSession forwards releaseObject to the scoped session", async () => {
+  const sendCalls: Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }> = [];
+
+  const session = createBrowserDebuggerSession(
+    {
+      send: async (method: string, params: unknown, sessionId?: string) => {
+        sendCalls.push({ method, params, sessionId });
+        return undefined;
+      },
+      on: () => undefined,
+      off: () => undefined,
+    } as never,
+    "session-release",
+  );
+
+  await session.releaseObject({ objectId: "obj-2" });
+
+  assert.equal(sendCalls.length, 1);
+  assert.equal(sendCalls[0]?.method, "Runtime.releaseObject");
+  assert.equal(sendCalls[0]?.sessionId, "session-release");
+});
+
+test("createBrowserDebuggerSession forwards evaluate to the scoped session", async () => {
+  const sendCalls: Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }> = [];
+
+  const session = createBrowserDebuggerSession(
+    {
+      send: async (method: string, params: unknown, sessionId?: string) => {
+        sendCalls.push({ method, params, sessionId });
+        return {
+          result: {
+            type: "number",
+            value: 2,
+          },
+        };
+      },
+      on: () => undefined,
+      off: () => undefined,
+    } as never,
+    "session-evaluate",
+  );
+
+  await session.evaluate({ expression: "1 + 1" });
+
+  assert.equal(sendCalls.length, 1);
+  assert.equal(sendCalls[0]?.method, "Runtime.evaluate");
+  assert.equal(sendCalls[0]?.sessionId, "session-evaluate");
+});
+
 test("createBrowserDebuggerSession forwards enable to the scoped session", async () => {
   const sendCalls: Array<{
     method: string;

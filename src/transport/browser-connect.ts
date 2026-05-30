@@ -52,6 +52,18 @@ type DebuggerSetBreakpointByUrlResult =
   ProtocolMappingApi.Commands["Debugger.setBreakpointByUrl"]["returnType"];
 type DebuggerRemoveBreakpointParams =
   ProtocolMappingApi.Commands["Debugger.removeBreakpoint"]["paramsType"][0];
+type RuntimeGetPropertiesParams =
+  ProtocolMappingApi.Commands["Runtime.getProperties"]["paramsType"][0];
+type RuntimeGetPropertiesResult =
+  ProtocolMappingApi.Commands["Runtime.getProperties"]["returnType"];
+type DebuggerEvaluateOnCallFrameParams =
+  ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["paramsType"][0];
+type DebuggerEvaluateOnCallFrameResult =
+  ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["returnType"];
+type RuntimeReleaseObjectParams =
+  ProtocolMappingApi.Commands["Runtime.releaseObject"]["paramsType"][0];
+type RuntimeEvaluateParams =
+  ProtocolMappingApi.Commands["Runtime.evaluate"]["paramsType"][0];
 type DebuggerPausedEvent = ProtocolMappingApi.Events["Debugger.paused"][0];
 type DebuggerBreakpointResolvedEvent =
   ProtocolMappingApi.Events["Debugger.breakpointResolved"][0];
@@ -68,6 +80,14 @@ export interface BrowserDebuggerSession {
     Pick<DebuggerSetBreakpointByUrlResult, "breakpointId" | "locations">
   >;
   removeBreakpoint: (params: DebuggerRemoveBreakpointParams) => Promise<void>;
+  getProperties: (
+    params: RuntimeGetPropertiesParams,
+  ) => Promise<RuntimeGetPropertiesResult>;
+  evaluateOnCallFrame: (
+    params: DebuggerEvaluateOnCallFrameParams,
+  ) => Promise<DebuggerEvaluateOnCallFrameResult>;
+  releaseObject: (params: RuntimeReleaseObjectParams) => Promise<void>;
+  evaluate: (params: RuntimeEvaluateParams) => Promise<BrowserRuntimeEvaluateResult>;
   resume: () => Promise<void>;
   onPaused: (
     listener: (event: DebuggerPausedEvent) => void,
@@ -145,6 +165,23 @@ export function createBrowserDebuggerSession(
     removeBreakpoint: async (params) => {
       await client.send("Debugger.removeBreakpoint", params, sessionId);
     },
+    getProperties: async (params) =>
+      (await client.send(
+        "Runtime.getProperties",
+        params,
+        sessionId,
+      )) as RuntimeGetPropertiesResult,
+    evaluateOnCallFrame: async (params) =>
+      (await client.send(
+        "Debugger.evaluateOnCallFrame",
+        params,
+        sessionId,
+      )) as DebuggerEvaluateOnCallFrameResult,
+    releaseObject: async (params) => {
+      await client.send("Runtime.releaseObject", params, sessionId);
+    },
+    evaluate: async (params) =>
+      (await client.send("Runtime.evaluate", params, sessionId)) as BrowserRuntimeEvaluateResult,
     resume: async () => {
       try {
         await client.send("Debugger.resume", undefined, sessionId);

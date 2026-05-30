@@ -1,4 +1,5 @@
 import type * as vscode from "vscode";
+import type Protocol from "devtools-protocol/types/protocol";
 import {
   BreakpointEvent,
   DebugSession,
@@ -15,6 +16,9 @@ import type {
 } from "./debug-session-manager";
 import type { Localize } from "../config/endpoint-config";
 import type { DesiredBreakpoint } from "./breakpoint-registry";
+import { formatRemoteObject, formatRemoteType } from "./variable-formatter";
+import type { VariableReferenceKind } from "./variable-store";
+import type { RuntimeObjectId } from "./cdp-types";
 
 export interface NotebookDebugAdapterOptions {
   sessionManager: DebugSessionManager;
@@ -22,12 +26,37 @@ export interface NotebookDebugAdapterOptions {
   logger?: (message: string, error?: unknown) => void;
 }
 
-const defaultLocalize = ((messageOrOptions: string | { message: string }) =>
-  typeof messageOrOptions === "string"
-    ? messageOrOptions
-    : messageOrOptions.message) as Localize;
+const defaultLocalize = ((
+  messageOrOptions: string | { message: string },
+  ...args: unknown[]
+) => {
+  const template =
+    typeof messageOrOptions === "string"
+      ? messageOrOptions
+      : messageOrOptions.message;
+
+  let rendered = template;
+  for (const [index, value] of args.entries()) {
+    rendered = rendered.replace(`{${index}}`, String(value));
+  }
+
+  return rendered;
+}) as Localize;
 
 const noopLogger = (): void => undefined;
+const MAX_VARIABLE_PAGE_SIZE = 100;
+
+interface StackFrameEntry {
+  frameId: number;
+  callFrame: Protocol.Debugger.CallFrame;
+}
+
+const scopeKinds: ReadonlySet<string> = new Set([
+  "local",
+  "closure",
+  "block",
+  "with",
+]);
 
 function createSource(
   pathOrName: string,
@@ -78,6 +107,10 @@ export class NotebookDebugAdapter
   private readonly logger: (message: string, error?: unknown) => void;
   private readonly terminationSubscription: vscode.Disposable;
   private readonly breakpointResolvedSubscription: vscode.Disposable;
+  private readonly stackFramesById = new Map<number, StackFrameEntry>();
+  private cachedStackFrames: StackFrameEntry[] = [];
+  private cachedPauseVersion = 0;
+  private cachedGlobalObjectId: RuntimeObjectId | undefined;
   private disposed = false;
   private terminatedEmitted = false;
 
@@ -159,6 +192,263 @@ export class NotebookDebugAdapter
     response.success = true;
     response.body = {
       threads: [new Thread(1, this.localize("Notebook cells"))],
+    };
+    this.sendResponse(response);
+  }
+
+  protected override async stackTraceRequest(
+    response: DebugProtocol.StackTraceResponse,
+    args: DebugProtocol.StackTraceArguments,
+  ): Promise<void> {
+    const paused = await this.ensurePausedFrames();
+    if (!paused) {
+      response.success = true;
+      response.body = {
+        stackFrames: [],
+        totalFrames: 0,
+      };
+      this.sendResponse(response);
+      return;
+    }
+
+    const totalFrames = paused.length;
+    const startFrame = Math.max(0, args.startFrame ?? 0);
+    const levels =
+      typeof args.levels === "number" && args.levels > 0
+        ? args.levels
+        : totalFrames;
+
+    const stackFrames = paused
+      .slice(startFrame, startFrame + levels)
+      .map((entry) => {
+        const callFrame = entry.callFrame;
+        const sourceIdentifier =
+          callFrame.url.length > 0
+            ? callFrame.url
+            : this.localize("<anonymous>");
+
+        return {
+          id: entry.frameId,
+          name:
+            callFrame.functionName.length > 0
+              ? callFrame.functionName
+              : this.localize("<anonymous>"),
+          source: createSource(sourceIdentifier),
+          line: callFrame.location.lineNumber + 1,
+          column: (callFrame.location.columnNumber ?? 0) + 1,
+        };
+      });
+
+    response.success = true;
+    response.body = {
+      stackFrames,
+      totalFrames,
+    };
+    this.sendResponse(response);
+  }
+
+  protected override async scopesRequest(
+    response: DebugProtocol.ScopesResponse,
+    args: DebugProtocol.ScopesArguments,
+  ): Promise<void> {
+    const paused = await this.ensurePausedFrames();
+    const frame = paused ? this.stackFramesById.get(args.frameId) : undefined;
+    const variableStore = this.sessionManager.getVariableStore();
+    const debuggerSession = this.sessionManager.getDebuggerSession();
+
+    if (!frame || !variableStore || !debuggerSession) {
+      response.success = true;
+      response.body = { scopes: [] };
+      this.sendResponse(response);
+      return;
+    }
+
+    const scopes: DebugProtocol.Scope[] = [];
+
+    for (const scope of frame.callFrame.scopeChain) {
+      if (!scopeKinds.has(scope.type)) {
+        continue;
+      }
+
+      const objectId = scope.object.objectId;
+      const variablesReference = objectId
+        ? variableStore.reserve({
+            objectId,
+            kind: toReferenceKind(scope.object),
+          })
+        : 0;
+
+      scopes.push({
+        name: this.localizeScopeName(scope.type),
+        presentationHint: scope.type,
+        expensive: false,
+        variablesReference,
+      });
+    }
+
+    const globalObjectId = await this.resolveGlobalObjectId(debuggerSession);
+    const globalReference =
+      globalObjectId !== undefined
+        ? variableStore.reserve({
+            objectId: globalObjectId,
+            kind: "object",
+          })
+        : 0;
+
+    scopes.push({
+      name: this.localize("Global"),
+      presentationHint: "globals",
+      expensive: true,
+      variablesReference: globalReference,
+    });
+
+    response.success = true;
+    response.body = { scopes };
+    this.sendResponse(response);
+  }
+
+  protected override async variablesRequest(
+    response: DebugProtocol.VariablesResponse,
+    args: DebugProtocol.VariablesArguments,
+  ): Promise<void> {
+    const variableStore = this.sessionManager.getVariableStore();
+    const debuggerSession = this.sessionManager.getDebuggerSession();
+
+    if (!variableStore || !debuggerSession) {
+      response.success = true;
+      response.body = { variables: [] };
+      this.sendResponse(response);
+      return;
+    }
+
+    const reference = variableStore.resolve(args.variablesReference);
+    if (!reference) {
+      response.success = true;
+      response.body = { variables: [] };
+      this.sendResponse(response);
+      return;
+    }
+
+    const result = await debuggerSession.getProperties({
+      objectId: reference.objectId,
+      ownProperties: true,
+      accessorPropertiesOnly: false,
+      generatePreview: true,
+    });
+
+    const descriptors = result.result.filter(
+      (descriptor) => descriptor.value !== undefined,
+    );
+    const start = Math.max(0, args.start ?? 0);
+    const requestedCount = Math.max(0, args.count ?? descriptors.length);
+    const pageSize = Math.min(requestedCount, MAX_VARIABLE_PAGE_SIZE);
+    const selected = descriptors.slice(start, start + pageSize);
+
+    const variables: DebugProtocol.Variable[] = selected.map((descriptor) => {
+      const value = descriptor.value as Protocol.Runtime.RemoteObject;
+      const nextReference = shouldCreateChildHandle(value)
+        ? variableStore.reserve({
+            objectId: value.objectId,
+            kind: toReferenceKind(value),
+          })
+        : 0;
+
+      return {
+        name: descriptor.name,
+        value: formatRemoteObject(value, 10240, this.localize),
+        type: formatRemoteType(value),
+        variablesReference: nextReference,
+      };
+    });
+
+    const remaining = Math.max(
+      0,
+      descriptors.length - (start + selected.length),
+    );
+    if (requestedCount > MAX_VARIABLE_PAGE_SIZE && remaining > 0) {
+      variables.push({
+        name: this.localize("… ({0} more)", remaining),
+        value: "",
+        type: "info",
+        variablesReference: 0,
+      });
+    }
+
+    response.success = true;
+    response.body = { variables };
+    this.sendResponse(response);
+  }
+
+  protected override async evaluateRequest(
+    response: DebugProtocol.EvaluateResponse,
+    args: DebugProtocol.EvaluateArguments,
+  ): Promise<void> {
+    const debuggerSession = this.sessionManager.getDebuggerSession();
+    if (!debuggerSession) {
+      response.success = true;
+      response.body = {
+        result: this.localize(
+          "Evaluation failed: {0}",
+          this.localize("session unavailable"),
+        ),
+        presentationHint: { kind: "error" },
+        variablesReference: 0,
+      };
+      this.sendResponse(response);
+      return;
+    }
+
+    const paused = await this.ensurePausedFrames();
+    const selectedFrame =
+      typeof args.frameId === "number"
+        ? this.stackFramesById.get(args.frameId)
+        : paused?.[0];
+
+    const variableStore = this.sessionManager.getVariableStore();
+    const expression = args.expression;
+
+    const evaluation = selectedFrame
+      ? await debuggerSession.evaluateOnCallFrame({
+          callFrameId: selectedFrame.callFrame.callFrameId,
+          expression,
+          returnByValue: false,
+          generatePreview: true,
+          throwOnSideEffect: args.context === "hover",
+        })
+      : await debuggerSession.evaluate({
+          expression,
+          returnByValue: false,
+          generatePreview: true,
+        });
+
+    if (evaluation.exceptionDetails) {
+      response.success = true;
+      response.body = {
+        result: this.localize(
+          "Evaluation failed: {0}",
+          describeException(evaluation.exceptionDetails),
+        ),
+        presentationHint: { kind: "error" },
+        variablesReference: 0,
+      };
+      this.sendResponse(response);
+      return;
+    }
+
+    const remoteResult = evaluation.result;
+    const variablesReference =
+      variableStore && shouldCreateChildHandle(remoteResult)
+        ? variableStore.reserve({
+            objectId: remoteResult.objectId,
+            kind: toReferenceKind(remoteResult),
+          })
+        : 0;
+
+    response.success = true;
+    response.body = {
+      result: formatRemoteObject(remoteResult, 10240, this.localize),
+      type: formatRemoteType(remoteResult),
+      variablesReference,
     };
     this.sendResponse(response);
   }
@@ -334,4 +624,122 @@ export class NotebookDebugAdapter
       }),
     );
   }
+
+  private async ensurePausedFrames(): Promise<StackFrameEntry[] | undefined> {
+    const pausedEvent = this.sessionManager.getPausedEvent();
+    if (!pausedEvent) {
+      return undefined;
+    }
+
+    const pauseVersion = this.sessionManager.getPauseVersion();
+    if (pauseVersion !== this.cachedPauseVersion) {
+      this.cachedPauseVersion = pauseVersion;
+      this.cachedGlobalObjectId = undefined;
+      this.cachedStackFrames = pausedEvent.callFrames.map(
+        (callFrame, index) => ({
+          frameId: index + 1,
+          callFrame,
+        }),
+      );
+      this.stackFramesById.clear();
+      for (const entry of this.cachedStackFrames) {
+        this.stackFramesById.set(entry.frameId, entry);
+      }
+
+      const variableStore = this.sessionManager.getVariableStore();
+      if (variableStore) {
+        await variableStore.clearForPause();
+      }
+    }
+
+    return this.cachedStackFrames;
+  }
+
+  private async resolveGlobalObjectId(
+    debuggerSession: ReturnType<DebugSessionManager["getDebuggerSession"]>,
+  ): Promise<string | undefined> {
+    if (!debuggerSession) {
+      return undefined;
+    }
+
+    if (this.cachedGlobalObjectId) {
+      return this.cachedGlobalObjectId;
+    }
+
+    const globalResult = await debuggerSession.evaluate({
+      expression: "globalThis",
+      returnByValue: false,
+      generatePreview: true,
+    });
+
+    const objectId = globalResult.result.objectId;
+    if (!objectId) {
+      return undefined;
+    }
+
+    this.cachedGlobalObjectId = objectId;
+    return objectId;
+  }
+
+  private localizeScopeName(scopeType: string): string {
+    if (scopeType === "local") {
+      return this.localize("Local");
+    }
+    if (scopeType === "closure") {
+      return this.localize("Closure");
+    }
+    if (scopeType === "block") {
+      return this.localize("Block");
+    }
+    if (scopeType === "with") {
+      return this.localize("With");
+    }
+
+    return scopeType;
+  }
+}
+
+function toReferenceKind(
+  value: Pick<Protocol.Runtime.RemoteObject, "type" | "subtype">,
+): VariableReferenceKind {
+  if (value.subtype === "array") {
+    return "array";
+  }
+
+  return value.type === "object" ? "object" : "scope";
+}
+
+function shouldCreateChildHandle(
+  value: Protocol.Runtime.RemoteObject,
+): value is Protocol.Runtime.RemoteObject & { objectId: RuntimeObjectId } {
+  if (!value.objectId) {
+    return false;
+  }
+
+  if (value.type !== "object") {
+    return false;
+  }
+
+  return value.subtype !== "null";
+}
+
+function describeException(
+  exceptionDetails: Protocol.Runtime.ExceptionDetails,
+): string {
+  if (
+    typeof exceptionDetails.text === "string" &&
+    exceptionDetails.text.length > 0
+  ) {
+    return exceptionDetails.text;
+  }
+
+  if (
+    exceptionDetails.exception &&
+    typeof exceptionDetails.exception.description === "string" &&
+    exceptionDetails.exception.description.length > 0
+  ) {
+    return exceptionDetails.exception.description;
+  }
+
+  return "Unknown error";
 }

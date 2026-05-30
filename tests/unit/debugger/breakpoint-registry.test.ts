@@ -67,6 +67,10 @@ function createSession(state: SessionState): BrowserDebuggerSession {
         throw new Error("remove failed");
       }
     },
+    getProperties: async () => ({ result: [] }),
+    evaluateOnCallFrame: async () => ({ result: { type: "undefined" } }),
+    releaseObject: async () => undefined,
+    evaluate: async () => ({ result: { type: "undefined" } }),
     resume: async () => undefined,
     onPaused: () => ({ dispose: () => undefined }),
     onBreakpointResolved: () => ({ dispose: () => undefined }),

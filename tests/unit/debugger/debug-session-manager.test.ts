@@ -70,6 +70,18 @@ function createFakeDebuggerSession(
       state.sequence.push("removeBreakpoint");
       state.removeBreakpointCalls.push(breakpointId);
     },
+    getProperties: async () => ({ result: [] }),
+    evaluateOnCallFrame: async () => ({
+      result: {
+        type: "undefined",
+      },
+    }),
+    releaseObject: async () => undefined,
+    evaluate: async () => ({
+      result: {
+        type: "undefined",
+      },
+    }),
     resume: async () => undefined,
     onPaused: (listener) => {
       state.sequence.push("onPaused");
