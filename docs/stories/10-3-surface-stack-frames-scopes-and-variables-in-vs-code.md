@@ -2,7 +2,7 @@
 storyId: "10.3"
 storyKey: "10-3-surface-stack-frames-scopes-and-variables-in-vs-code"
 title: "Surface Stack Frames, Scopes, and Variables in VS Code"
-status: "backlog"
+status: "ready-for-dev"
 created: "2026-05-11"
 epic: "10"
 priority: "p0-blocker"
@@ -15,7 +15,7 @@ dependencies:
 
 # Story 10.3: Surface Stack Frames, Scopes, and Variables in VS Code
 
-**Status:** backlog
+**Status:** ready-for-dev
 
 ## Story
 
@@ -41,7 +41,7 @@ So that I can inspect stack and state without switching to browser DevTools.
 
 - Local scope (variables declared in the cell)
 - Global scope (window, global objects)
-  **And** each scope includes an accurate variable count.
+  **And** each scope carries a `variablesReference` so VS Code can request its contents lazily. Per DAP, `namedVariables`/`indexedVariables` are left undefined for MVP — counts are resolved lazily on expansion, not eagerly fetched up front.
 
 ### AC 3: Variables Are Resolved with Handles
 
@@ -78,28 +78,38 @@ So that I can inspect stack and state without switching to browser DevTools.
 
 ## Tasks / Subtasks
 
-### 1. Implement `threads` DAP Request Handler (AC: 1)
+### 1. Pre-Implementation Research Gate (BLOCKER for all subsequent tasks)
 
-- [ ] In `src/debugger/notebook-dap-adapter.ts`, refine the Story 10.1 stub `threadsRequest` to keep returning `{ threads: [{ id: 1, name: localized("Notebook cells") }] }`. No new structure for MVP.
+Epic 2 retro added a mandatory "research before implementation" gate for any feature that depends on undocumented CDP/DevTools behavior. The dev MUST record findings under `spike/cdp-debug-inspection-findings.md` (or extend an existing spike note) and link the file from this section BEFORE starting Task 2. The following hypotheses must be empirically validated against a live Foundry session through `BrowserDebuggerSession`:
 
-### 2. Implement `stackTrace` DAP Request Handler (AC: 1)
+- [ ] H1: `Debugger.paused.callFrames` survives between pause and the first `stackTrace` request without re-issuing any CDP call. Confirm by capturing one pause, waiting 5s, then serving frames from the cached payload.
+- [ ] H2: `Runtime.getProperties({ objectId, ownProperties: true, generatePreview: true })` returns serviceable `preview` data for the object kinds Foundry exposes in scope (game, canvas, ui, CONFIG, plus a DOM element). Record any case where `preview` is absent so the formatter (Task 8) accounts for it.
+- [ ] H3: `Runtime.evaluate({ expression: "globalThis", returnByValue: false })` returns a stable `objectId` reusable as the Global scope handle for the duration of one pause.
+- [ ] H4: `Debugger.evaluateOnCallFrame` with `throwOnSideEffect: true` rejects side-effectful expressions cleanly (used by hover context in Task 9).
+- [ ] H5: Per-value oversize behavior — confirm whether CDP itself caps `RemoteObject.value`/`description` size before the adapter's 10 KiB truncation kicks in, and record the observed ceiling.
 
+Research findings reference: `<link to spike file>` (fill in before Task 2).
+
+### 2. Implement `threads` and `stackTrace` DAP Request Handlers (AC: 1)
+
+- [ ] In `src/debugger/notebook-dap-adapter.ts`, refine the Story 10.1 stub `threadsRequest` to keep returning `{ threads: [{ id: 1, name: localize("Notebook cells") }] }` — no new structure for MVP.
 - [ ] Add `stackTraceRequest(response, args)`.
 - [ ] CDP does not have a `Debugger.getCallStack` method. The full call stack is delivered as `params.callFrames` on the `Debugger.paused` event. The session manager (Story 10.1) caches the most recent paused payload per debug session; the adapter reads from that cache and never issues a new CDP call to fetch frames.
 - [ ] Map each cached `Debugger.CallFrame` to a DAP `StackFrame`:
   - `id`: stable per-pause integer assigned by a frame manager (Task 5).
   - `name`: `callFrame.functionName || "<anonymous>"`.
-  - `source`: `{ name: cell.label, path: cell.document.uri.toString() }` (Story 10.2 source identity).
+  - `source`: built via the existing `createSource` helper in `src/debugger/notebook-dap-adapter.ts`. Pass `cell.document.uri.toString()` as the single identifier; the helper sets both `name` and `path` to that URI. Do NOT invent a `cell.label` property — `vscode.NotebookCell` has no `label`. If a friendlier name is desired, derive `"Cell {0}"` (1-based `cell.index`) and pass it explicitly via the helper's `source` override.
   - `line`: `callFrame.location.lineNumber + 1` (DAP is 1-based).
   - `column`: `callFrame.location.columnNumber + 1`.
 - [ ] Honor `args.startFrame` and `args.levels` for paging; `totalFrames` is the cached count.
 
 ### 3. Extend `BrowserDebuggerSession` for Property Access (AC: 1, 2, 3, 4, 6)
 
-- [ ] No `src/transport/debugger-interface.ts`. Extend the existing `BrowserDebuggerSession` surface in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) with the methods needed by Stories 10.3–10.4. Reuse existing `chrome-remote-interface` types via `ProtocolMappingApi.Commands["Debugger.<method>"]` so we do not redeclare CDP shapes.
-  - `getProperties(params: Protocol.Runtime.GetPropertiesRequest): Promise<Protocol.Runtime.GetPropertiesResponse>` — wraps `Runtime.getProperties` on the per-target session.
-  - `evaluateOnCallFrame(params: Protocol.Debugger.EvaluateOnCallFrameRequest): Promise<Protocol.Debugger.EvaluateOnCallFrameResponse>` — wraps `Debugger.evaluateOnCallFrame`.
-  - `releaseObject(params: Protocol.Runtime.ReleaseObjectRequest): Promise<void>` — wraps `Runtime.releaseObject`, used by the variable store on resume.
+- [ ] Extend the existing `BrowserDebuggerSession` surface in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) with the methods needed by Stories 10.3–10.4. Reuse existing CDP types via `ProtocolMappingApi.Commands["<Domain>.<method>"]` imported from `devtools-protocol/types/protocol-mapping` (the same import the file already uses for breakpoint commands) so we do not redeclare CDP shapes.
+  - `getProperties(params: ProtocolMappingApi.Commands["Runtime.getProperties"]["paramsType"][0]): Promise<ProtocolMappingApi.Commands["Runtime.getProperties"]["returnType"]>` — wraps `Runtime.getProperties` on the per-target session.
+  - `evaluateOnCallFrame(params: ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["paramsType"][0]): Promise<ProtocolMappingApi.Commands["Debugger.evaluateOnCallFrame"]["returnType"]>` — wraps `Debugger.evaluateOnCallFrame`.
+  - `releaseObject(params: ProtocolMappingApi.Commands["Runtime.releaseObject"]["paramsType"][0]): Promise<void>` — wraps `Runtime.releaseObject`, used by the variable store on resume.
+  - `evaluate(params: ProtocolMappingApi.Commands["Runtime.evaluate"]["paramsType"][0]): Promise<ProtocolMappingApi.Commands["Runtime.evaluate"]["returnType"]>` — wraps `Runtime.evaluate` on the per-target session. Required so the adapter can fetch the `globalThis` `objectId` for the Global scope (Task 4) without going through the kernel's `evaluate` path.
 - [ ] Stack frames come from the cached `Debugger.paused` event (Task 2), so no `getCallStack` method is added.
 - [ ] Update [tests/unit/transport/browser-connect.test.ts](../../tests/unit/transport/browser-connect.test.ts) with forwarding tests for each new method.
 
@@ -108,18 +118,19 @@ So that I can inspect stack and state without switching to browser DevTools.
 - [ ] Add `scopesRequest(response, args)`.
 - [ ] Map the cached `CallFrame.scopeChain[]` for the requested `frameId` into DAP `Scope[]`:
   - For each `scopeChain` entry whose `type` is `local`, `closure`, `block`, or `with`, emit one DAP scope with the original type as `presentationHint` and a localized `name`.
-  - Always append a `Global` scope backed by `callFrame.this.objectId` falling back to a session-scoped `globalThis` lookup (`Runtime.evaluate({ expression: "globalThis", returnByValue: false })` cached per pause).
+  - Append a single `Global` scope whose `objectId` is resolved via `BrowserDebuggerSession.evaluate({ expression: "globalThis", returnByValue: false })` once per pause and cached on the pause record. Do NOT use `callFrame.this.objectId` — in CDP `callFrame.this` is the call-site `this` value (often `undefined` in strict/module code) and is not the global object.
   - Each scope reserves a `variablesReference` from the variable store (Task 5) keyed by the underlying `Runtime.RemoteObject.objectId`.
   - Set `expensive: true` for the global scope and `false` otherwise.
 
 ### 5. Create the Variable Store (AC: 3, 4)
 
-- [ ] Create `src/debugger/variable-store.ts` exporting `createVariableStore({ debuggerSession })`.
+- [ ] Create `src/debugger/variable-store.ts` exporting `createVariableStore({ debuggerSession, logger })` and the `VariableStore` interface.
 - [ ] Responsibilities:
   - Allocate sequential `variablesReference` handles starting at `1000`; reserve `0` for non-expandable values.
   - Map handle → `{ objectId: string, kind: "scope" | "object" | "array" }`.
   - Track every `objectId` ever returned during a pause so they can be released via `Runtime.releaseObject` on resume.
-  - `clearForPause()` invoked by the pause-event handler (Story 10.4) wipes handles and releases live `objectId`s.
+  - `clearForPause(): Promise<void>` invoked by the pause-event handler (Story 10.4) wipes handles and releases live `objectId`s. Best-effort: every `releaseObject` rejection is caught and logged via `logger`; the returned promise resolves even if every call fails (mirrors `BreakpointRegistry.clearAll` from Story 10.2).
+  - `dispose(): Promise<void>` invoked from `DebugSessionManager.stopRunningSession()` (Story 10.1 teardown path). Calls `clearForPause()` and then drops the handle map so any handle lookup after dispose returns `undefined`. The session manager MUST drop its store reference after `dispose()` resolves.
 
 ### 6. Implement `variables` DAP Request Handler (AC: 3, 4)
 
@@ -151,26 +162,35 @@ So that I can inspect stack and state without switching to browser DevTools.
 - [ ] When `args.frameId` is unset (REPL/Watch top-level while paused), still prefer `evaluateOnCallFrame` against frame 0; fall back to `Runtime.evaluate` only when there is no active pause (handled by Story 10.4).
 - [ ] On `exceptionDetails`, return the localized error string in `response.body.result` and set `presentationHint = { kind: "error" }` instead of failing the request.
 
-### 10. (Folded into Task 3) Transport Methods Recap
-
-- [ ] Confirm `BrowserDebuggerSession.evaluateOnCallFrame` (Task 3) is the only path used by Task 9. No `evaluateExpressionInFrame` wrapper exists.
-
-### 11. Pause/Resume Hooks for the Variable Store (AC: 1–6)
+### 10. Pause/Resume Hooks for the Variable Store (AC: 1–6)
 
 - [ ] The session manager (Story 10.1) already owns `Debugger.paused` subscription. On each pause it stores `callFrames` and notifies the adapter. The adapter:
   - Caches `callFrames` keyed by `threadId: 1`.
   - Resets the variable store before serving requests for the new pause.
 - [ ] Story 10.4 owns the `stopped` / `continued` events and the `clearForPause()` call on resume; Story 10.3 only consumes the cached frames and exposes the store API.
+- [ ] `DebugSessionManager.stopRunningSession()` (Story 10.1) must call `variableStore.dispose()` BEFORE `Debugger.disable`, mirroring the `BreakpointRegistry.clearAll()` placement from Story 10.2 Task 7. The session manager drops its store reference after dispose resolves so the adapter cannot serve stale handles.
+
+### 11. Localization (AC: 1, 2, 5, 6)
+
+- [ ] Add localized strings to [l10n/bundle.l10n.json](../../l10n/bundle.l10n.json):
+  - `"Notebook cells"` — thread name (Task 2).
+  - `"Local"`, `"Closure"`, `"Block"`, `"With"`, `"Global"` — scope display names (Task 4).
+  - `"[Function: {0}]"` — function placeholder (Task 8 formatter).
+  - `"[Object]"`, `"[Array]"` — opaque placeholders when preview is unavailable (Task 8 formatter).
+  - `"… ({0} more)"` — paging truncation marker (Task 6).
+  - `"Value truncated (over {0} characters)."` — oversize value marker (Task 8 formatter).
+  - `"Evaluation failed: {0}"` — watch / hover evaluation error message (Task 9 evaluate).
+- [ ] Reuse `Localize` from [src/config/endpoint-config.ts](../../src/config/endpoint-config.ts) — the same injection pattern Story 10.1 / 10.2 use; do not import `vscode.l10n` directly from the adapter.
 
 ### 12. Add Unit Tests (AC: 1–6)
 
 - [ ] `tests/unit/debugger/notebook-dap-adapter-frames.test.ts`: paged `stackTrace` over a synthetic cached `Debugger.paused` payload; empty cache returns `{ stackFrames: [], totalFrames: 0 }`.
 - [ ] `tests/unit/debugger/notebook-dap-adapter-scopes.test.ts`: `scopeChain` mapping plus appended global scope; handles allocated through the variable store.
-- [ ] `tests/unit/debugger/variable-store.test.ts`: handle allocation, kind tagging, `clearForPause` releases every tracked `objectId` exactly once.
+- [ ] `tests/unit/debugger/variable-store.test.ts`: handle allocation, kind tagging, `clearForPause` releases every tracked `objectId` exactly once, `clearForPause` resolves even when every `releaseObject` rejects (logged), `dispose` makes subsequent handle lookups return `undefined`.
 - [ ] `tests/unit/debugger/notebook-dap-adapter-variables.test.ts`: scope expansion calls `getProperties` with the recorded `objectId`; nested expansion creates fresh handles; oversize page is truncated and marked.
 - [ ] `tests/unit/debugger/variable-formatter.test.ts`: primitives, functions, nodes, oversize truncation.
 - [ ] `tests/unit/debugger/notebook-dap-adapter-evaluate.test.ts`: success path; `exceptionDetails` path; hover context sets `throwOnSideEffect: true`.
-- [ ] `tests/unit/transport/browser-connect.test.ts`: forwarding for `getProperties`, `evaluateOnCallFrame`, `releaseObject`.
+- [ ] `tests/unit/transport/browser-connect.test.ts`: forwarding for `getProperties`, `evaluateOnCallFrame`, `releaseObject`, and `evaluate`.
 
 ### 13. Run Full Validation Suite (AC: 1–6)
 
@@ -194,27 +214,29 @@ So that I can inspect stack and state without switching to browser DevTools.
 
 This is the **third story in Epic 10** and focuses on surfacing execution context (frames, scopes, variables) to VS Code debug panes. It builds on Story 10.1's DAP foundation and Story 10.2's breakpoint handling.
 
-**Scope boundary:** This story covers inspection and viewing. Modifying variables is deferred (MVP doesn't support `setVariable`). Stepping controls are Story 10.4.
+**Scope boundary:** This story covers inspection and viewing. Modifying variables is deferred (MVP doesn't support `setVariable`). Stepping controls and the pause/resume lifecycle (including the retirement of Story 2.5's transitional auto-resume diagnostic deviation — see Epic 2 retro action item) are Story 10.4's responsibility; 10.3 only exposes the cached pause state and the variable store API that 10.4 will drive.
 
 ### Architecture Guardrails (Must Follow)
 
-- **Single transport surface.** The adapter must not import `chrome-remote-interface`. All CDP calls go through `BrowserDebuggerSession` (extended in Task 3). No `src/transport/debugger-interface.ts`.
+- **Single transport surface.** All CDP calls go through `BrowserDebuggerSession` (extended in Task 3). The adapter and variable store must not import `chrome-remote-interface` directly, and no new `src/transport/*-interface.ts` files are introduced.
 - **Stack frames are pulled from the cached `Debugger.paused` payload.** CDP has no `Debugger.getCallStack`; do not invent one.
-- **Folder is `src/debugger/`.** Created by Story 2.5, owned by Epic 10.
-- **Handle management:** Sequential numeric handles starting at `1000`. The variable store owns lifecycle and releases every `objectId` via `Runtime.releaseObject` on pause clear.
+- **Folder is `src/debugger/`.** Created by Story 2.5, owned by Epic 10. No new top-level folders.
+- **Source identity is the cell URI string.** Reuse the existing `createSource` helper in `src/debugger/notebook-dap-adapter.ts`. `vscode.NotebookCell` has no `label` property — do not invent one; pass `cell.document.uri.toString()` as the single source identifier, or derive a localized `"Cell {0}"` name from `cell.index + 1` and pass it via the helper's override.
+- **Global scope resolution.** `globalThis` is fetched once per pause via `BrowserDebuggerSession.evaluate`. Never use `callFrame.this.objectId` as the global — that's the call-site `this` value, not the global object.
+- **Handle management:** Sequential numeric handles starting at `1000`. The variable store owns lifecycle and releases every `objectId` via `Runtime.releaseObject` on pause clear and on session dispose.
 - **Value serialization:** Use CDP's existing `description` / `preview` fields. Never expose raw `RemoteObject` to DAP. Truncate at 10240 chars.
 - **Error boundaries:** `exceptionDetails` becomes a DAP error result, never a request rejection.
-- **Localization:** Scope names, placeholders, error messages via `vscode.l10n.t()` keyed in `l10n/bundle.l10n.json`.
+- **Localization:** Scope names, placeholders, error messages routed through the injected `Localize` function (same pattern as Stories 10.1/10.2), keyed in `l10n/bundle.l10n.json`.
+- **Release gate (per Epic 2 retro):** Manual smoke (Task 13) is a release blocker, not optional. Any defect first surfaced during manual smoke after `lint` / `compile` / `test` are green is recorded as an automation-gap defect and backfilled with an automated test before closeout.
+- **Closeout discipline (per Epic 2 retro):** When moving this story to `done`, update frontmatter `status`, the body `**Status:**` line, AND `docs/stories/sprint-status.yaml` in the same change. Drift between the three is a no-go.
 
 ### Transport Layer Extensions
 
-Add to `BrowserDebuggerSession` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) (no new files):
+Add to `BrowserDebuggerSession` in [src/transport/browser-connect.ts](../../src/transport/browser-connect.ts) (no new files). Reuse the existing `ProtocolMappingApi` import (`import type ProtocolMappingApi from "devtools-protocol/types/protocol-mapping";`) — do not introduce a `chrome-remote-interface/types/...` import; the project already standardized on `devtools-protocol`.
 
 ```typescript
-import type ProtocolMappingApi from "chrome-remote-interface/types/protocol-mapping.d.ts";
-
 export interface BrowserDebuggerSession {
-  // ...existing members from Story 2.5 / 10.1...
+  // ...existing members from Story 2.5 / 10.1 / 10.2...
   getProperties(
     params: ProtocolMappingApi.Commands["Runtime.getProperties"]["paramsType"][0],
   ): Promise<
@@ -228,17 +250,25 @@ export interface BrowserDebuggerSession {
   releaseObject(
     params: ProtocolMappingApi.Commands["Runtime.releaseObject"]["paramsType"][0],
   ): Promise<void>;
+  evaluate(
+    params: ProtocolMappingApi.Commands["Runtime.evaluate"]["paramsType"][0],
+  ): Promise<ProtocolMappingApi.Commands["Runtime.evaluate"]["returnType"]>;
 }
 ```
 
-All three methods send the underlying CDP command on the same per-target session as the existing `setBreakpointByUrl` / `removeBreakpoint` methods.
+All four methods send the underlying CDP command on the same per-target session as the existing `setBreakpointByUrl` / `removeBreakpoint` methods.
 
-### Known Unknowns & Future Decisions
+### Accepted Deviations
 
-1. **Watch expression persistence:** Currently, watches are transient (cleared on resume). Future: persist watches across pause/resume cycles.
-2. **Variable modification:** `setVariable` request is not supported in MVP. Future story.
-3. **Depth limit:** Current MVP uses depth 2 for nested properties. Configurable depth is a future enhancement.
-4. **Performance:** Fetching many variables may be slow. Consider lazy loading for large variable lists.
+Per Epic 2 retro action item, each accepted deviation has an explicit retirement trigger so it does not become hidden debt.
+
+| #   | Deviation                                                                                                                                | Justification                                                                                            | Retirement Trigger                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| 1   | `setVariable` is not implemented; the Variables pane is read-only.                                                                       | MVP scope — write-back requires separate UX and round-trip safety review.                                | Post-Epic 10 backlog story for variable modification.                      |
+| 2   | Watch expressions are transient and cleared on each resume.                                                                              | Simplifies handle lifecycle; matches Story 10.4's `clearForPause` contract.                              | Future story for cross-pause watch persistence.                            |
+| 3   | Nested-object expansion depth is fixed (lazy; VS Code drives the depth by issuing fresh `variables` requests). No user-configurable cap. | DAP's lazy expansion model handles this naturally; configurable depth is unjustified complexity for MVP. | Backlog enhancement only if real-world traces show pathological expansion. |
+| 4   | DAP scopes report `variablesReference` only — `namedVariables` / `indexedVariables` are left undefined.                                  | Eager counts would require an extra `Runtime.getProperties` per scope on every pause.                    | Backlog enhancement if VS Code UX demands array length up front.           |
+| 5   | Bulk variable fetches are paged at 100 items per request; larger requests return one page plus a localized truncation marker.            | Bounded payloads keep paused-UI responsive on large Foundry objects.                                     | Reassess once user traces show recurring pagination friction.              |
 
 ### Related Documentation
 
