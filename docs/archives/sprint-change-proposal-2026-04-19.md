@@ -3,7 +3,7 @@
 **Date:** 2026-04-19
 **Author:** Sylvercode (via correct-course workflow)
 **Mode:** Incremental
-**Trigger source:** `docs/stories/breakpoint-correct-course-prompt.md`
+**Trigger source:** `docs/archives/breakpoint-correct-course-prompt.md`
 **Scope classification:** Moderate (PRD + architecture + epic edits, one new story, sprint-status update)
 
 ---

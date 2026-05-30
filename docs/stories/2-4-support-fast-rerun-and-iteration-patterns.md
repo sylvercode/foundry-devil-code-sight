@@ -386,7 +386,7 @@ When the Pattern B IIFE wrapper is applied, those declarations move into the IIF
 - [Source: docs/stories/2-3-normalize-success-and-failure-output-contracts.md] — previous story; contract stability
 - [Source: docs/stories/2-2-run-asynchronous-javascript-cells.md] — async execution baseline
 - [Source: docs/stories/2-spike-cdp-sourceurl-debugger.md] — spike origin story
-- [Source: docs/stories/breakpoint-correct-course-prompt.md] — context for FR38 introduction
+- [Source: docs/archives/breakpoint-correct-course-prompt.md] — context for FR38 introduction
 - [Source: .github/copilot-instructions.md] — coding standards and stable technical constraints
 - [Source: .memory/cdp-eval-notes.md] — repo memory: `replMode` rationale and sourceURL contract
 

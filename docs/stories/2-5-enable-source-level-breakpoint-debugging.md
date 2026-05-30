@@ -438,7 +438,7 @@ If the auto-resume helper grows beyond a few lines (e.g., exponential backoff on
 - [Source: docs/stories/2-4-support-fast-rerun-and-iteration-patterns.md] — Story 2.4 source-identity contract Story 2.5 binds against
 - [Source: docs/stories/2-3-normalize-success-and-failure-output-contracts.md] — `ExecutionResult` shape (untouched here)
 - [Source: docs/stories/2-spike-cdp-sourceurl-debugger.md] — spike origin story
-- [Source: docs/stories/breakpoint-correct-course-prompt.md] — context for FR38 introduction
+- [Source: docs/archives/breakpoint-correct-course-prompt.md] — context for FR38 introduction
 - [Source: docs/stories/deferred-work.md] — "Full VS Code Debug Adapter for cell debugging" tracks the deferred VS Code-side debug UI; this story is explicitly the CDP-mirror-only portion
 - [Source: .github/copilot-instructions.md] — coding standards and stable technical constraints
 
